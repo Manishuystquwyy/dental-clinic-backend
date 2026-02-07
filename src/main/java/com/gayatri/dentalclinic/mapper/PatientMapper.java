@@ -21,6 +21,16 @@ public class PatientMapper {
                 .build();
     }
 
+    public static void updateEntity(PatientRequestDto dto, Patient patient) {
+        patient.setFirstName(dto.getFirstName());
+        patient.setLastName(dto.getLastName());
+        patient.setGender(dto.getGender());
+        patient.setDateOfBirth(dto.getDateOfBirth());
+        patient.setPhone(dto.getPhone());
+        patient.setEmail(dto.getEmail());
+        patient.setAddress(dto.getAddress());
+    }
+
     public static PatientResponseDto toDto(Patient patient) {
         return PatientResponseDto.builder()
                 .id(patient.getId())
