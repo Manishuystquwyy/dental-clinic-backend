@@ -1,40 +1,23 @@
-package com.gayatri.dentalclinic.entity;
+package com.gayatri.dentalclinic.dto.response;
 
-import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "patients")
 @Getter
 @Setter
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
 @Builder
-public class Patient {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class PatientResponseDto {
     private Long id;
-
-    @Column(nullable = false)
     private String firstName;
-
-    @Column(nullable = false)
     private String lastName;
-
     private String gender;
-
     private LocalDate dateOfBirth;
-
-    @Column(nullable = false, unique = true)
     private String phone;
-
-    @Column(unique = true)
     private String email;
-
     private String address;
-
     private LocalDateTime createdAt;
 }
