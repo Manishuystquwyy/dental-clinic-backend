@@ -1,0 +1,73 @@
+package com.gayatri.dentalclinic.service.impl;
+
+import com.gayatri.dentalclinic.dto.request.PaymentRequestDto;
+import com.gayatri.dentalclinic.dto.response.PaymentResponseDto;
+import com.gayatri.dentalclinic.entity.Bill;
+import com.gayatri.dentalclinic.entity.Payment;
+import com.gayatri.dentalclinic.enums.PaymentStatus;
+import com.gayatri.dentalclinic.exception.NotFoundException;
+import com.gayatri.dentalclinic.mapper.PaymentMapper;
+import com.gayatri.dentalclinic.repository.BillRepository;
+import com.gayatri.dentalclinic.repository.PaymentRepository;
+import com.gayatri.dentalclinic.service.PaymentService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class PaymentServiceImpl implements PaymentService {
+
+    private final PaymentRepository paymentRepository;
+    private final BillRepository billRepository;
+
+    @Override
+    public PaymentResponseDto createPayment(PaymentRequestDto requestDto) {
+        Bill bill = billRepository.findById(requestDto.getBillId())
+                .orElseThrow(() -> new NotFoundException("Bill not found with id: " + requestDto.getBillId()));
+
+        if (requestDto.getStatus() == null) {
+            requestDto.setStatus(PaymentStatus.PENDING);
+        }
+
+        Payment payment = PaymentMapper.toEntity(requestDto, bill);
+        Payment savedPayment = paymentRepository.save(payment);
+        return PaymentMapper.toDto(savedPayment);
+    }
+
+    @Override
+    public List<PaymentResponseDto> getAllPayments() {
+        return paymentRepository.findAll()
+                .stream()
+                .map(PaymentMapper::toDto)
+                .toList();
+    }
+
+    @Override
+    public PaymentResponseDto getPaymentById(Long id) {
+        Payment payment = paymentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
+        return PaymentMapper.toDto(payment);
+    }
+
+    @Override
+    public PaymentResponseDto updatePayment(Long id, PaymentRequestDto requestDto) {
+        Payment payment = paymentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
+
+        Bill bill = billRepository.findById(requestDto.getBillId())
+                .orElseThrow(() -> new NotFoundException("Bill not found with id: " + requestDto.getBillId()));
+
+        PaymentMapper.updateEntity(requestDto, payment, bill);
+        Payment savedPayment = paymentRepository.save(payment);
+        return PaymentMapper.toDto(savedPayment);
+    }
+
+    @Override
+    public void deletePayment(Long id) {
+        Payment payment = paymentRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
+        paymentRepository.delete(payment);
+    }
+}
