@@ -5,6 +5,7 @@ import com.gayatri.dentalclinic.dto.response.PaymentResponseDto;
 import com.gayatri.dentalclinic.entity.Bill;
 import com.gayatri.dentalclinic.entity.Payment;
 import com.gayatri.dentalclinic.enums.PaymentStatus;
+import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.exception.NotFoundException;
 import com.gayatri.dentalclinic.mapper.PaymentMapper;
 import com.gayatri.dentalclinic.repository.BillRepository;
@@ -26,6 +27,8 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponseDto createPayment(PaymentRequestDto requestDto) {
         Bill bill = billRepository.findById(requestDto.getBillId())
                 .orElseThrow(() -> new NotFoundException("Bill not found with id: " + requestDto.getBillId()));
+
+        validateAmount(requestDto, bill);
 
         if (requestDto.getStatus() == null) {
             requestDto.setStatus(PaymentStatus.PENDING);
@@ -59,6 +62,9 @@ public class PaymentServiceImpl implements PaymentService {
         Bill bill = billRepository.findById(requestDto.getBillId())
                 .orElseThrow(() -> new NotFoundException("Bill not found with id: " + requestDto.getBillId()));
 
+        validateAmount(requestDto, bill);
+        validateStatusTransition(payment.getStatus(), requestDto.getStatus());
+
         PaymentMapper.updateEntity(requestDto, payment, bill);
         Payment savedPayment = paymentRepository.save(payment);
         return PaymentMapper.toDto(savedPayment);
@@ -69,5 +75,34 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
         paymentRepository.delete(payment);
+    }
+
+    private void validateAmount(PaymentRequestDto requestDto, Bill bill) {
+        if (bill.getFinalAmount() != null && requestDto.getAmount() != null &&
+                requestDto.getAmount().compareTo(bill.getFinalAmount()) > 0) {
+            throw new BadRequestException("Payment amount cannot exceed bill final amount");
+        }
+    }
+
+    private void validateStatusTransition(PaymentStatus currentStatus, PaymentStatus newStatus) {
+        if (newStatus == null || currentStatus == null || newStatus == currentStatus) {
+            return;
+        }
+
+        switch (currentStatus) {
+            case PENDING -> {
+                if (newStatus != PaymentStatus.SUCCESS && newStatus != PaymentStatus.FAILED) {
+                    throw new BadRequestException("Invalid status transition from PENDING to " + newStatus);
+                }
+            }
+            case SUCCESS -> {
+                if (newStatus != PaymentStatus.REFUNDED) {
+                    throw new BadRequestException("Invalid status transition from SUCCESS to " + newStatus);
+                }
+            }
+            case FAILED, REFUNDED -> {
+                throw new BadRequestException("Cannot transition status from " + currentStatus);
+            }
+        }
     }
 }
