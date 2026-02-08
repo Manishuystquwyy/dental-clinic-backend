@@ -7,8 +7,10 @@ import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.exception.NotFoundException;
 import com.gayatri.dentalclinic.mapper.PatientMapper;
 import com.gayatri.dentalclinic.repository.PatientRepository;
+import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.PatientService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -73,5 +75,25 @@ public class PatientServiceImpl implements PatientService {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + id));
         patientRepository.delete(patient);
+    }
+
+    @Override
+    public PatientResponseDto getCurrentPatient() {
+        Long patientId = SecurityUtils.getCurrentPatientId();
+        if (patientId == null) {
+            throw new AccessDeniedException("No patient account found.");
+        }
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundException("Patient not found with id: " + patientId));
+        return PatientMapper.toDto(patient);
+    }
+
+    @Override
+    public PatientResponseDto updateCurrentPatient(PatientRequestDto requestDto) {
+        Long patientId = SecurityUtils.getCurrentPatientId();
+        if (patientId == null) {
+            throw new AccessDeniedException("No patient account found.");
+        }
+        return updatePatient(patientId, requestDto);
     }
 }

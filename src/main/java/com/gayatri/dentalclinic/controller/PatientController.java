@@ -46,6 +46,12 @@ public class PatientController {
         return patientService.getAllPatients();
     }
 
+    @GetMapping("/me")
+    @Operation(summary = "Get current patient profile", description = "Returns the logged-in patient's profile.")
+    public PatientResponseDto getCurrentPatient() {
+        return patientService.getCurrentPatient();
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get patient by id", description = "Returns a patient by id.")
     @ApiResponses(value = {
@@ -72,6 +78,12 @@ public class PatientController {
             @PathVariable Long id,
             @Valid @RequestBody PatientRequestDto requestDto) {
         return patientService.updatePatient(id, requestDto);
+    }
+
+    @PutMapping("/me")
+    @Operation(summary = "Update current patient profile", description = "Updates the logged-in patient's profile.")
+    public PatientResponseDto updateCurrentPatient(@Valid @RequestBody PatientRequestDto requestDto) {
+        return patientService.updateCurrentPatient(requestDto);
     }
 
     @DeleteMapping("/{id}")
