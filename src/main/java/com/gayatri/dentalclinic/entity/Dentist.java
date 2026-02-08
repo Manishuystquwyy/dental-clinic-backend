@@ -1,9 +1,19 @@
 package com.gayatri.dentalclinic.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "dentists")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Dentist {
 
     @Id
@@ -13,5 +23,6 @@ public class Dentist {
     private String name;
     private String phone;
     private String email;
-    private int experience_years;
+    @Column(name = "experience_years")
+    private int experienceYears;
 }
