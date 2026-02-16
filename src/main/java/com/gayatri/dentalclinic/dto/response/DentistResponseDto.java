@@ -28,4 +28,10 @@ public class DentistResponseDto {
 
     @Schema(description = "Years of experience", example = "8")
     private int experienceYears;
+
+    @Schema(description = "Highest qualification", example = "BDS")
+    private String qualification;
+
+    @Schema(description = "Specialization", example = "Orthodontist")
+    private String specialization;
 }

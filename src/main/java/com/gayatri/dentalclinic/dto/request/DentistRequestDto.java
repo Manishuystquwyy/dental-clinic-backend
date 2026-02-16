@@ -32,4 +32,10 @@ public class DentistRequestDto {
     @Schema(description = "Years of experience", example = "8")
     @Min(value = 0, message = "Experience years must be 0 or greater")
     private int experienceYears;
+
+    @Schema(description = "Highest qualification", example = "BDS")
+    private String qualification;
+
+    @Schema(description = "Specialization", example = "Orthodontist")
+    private String specialization;
 }

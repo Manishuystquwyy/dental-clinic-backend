@@ -25,4 +25,6 @@ public class Dentist {
     private String email;
     @Column(name = "experience_years")
     private int experienceYears;
+    private String qualification;
+    private String specialization;
 }

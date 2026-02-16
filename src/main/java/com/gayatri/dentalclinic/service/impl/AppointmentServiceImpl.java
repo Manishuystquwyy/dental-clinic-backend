@@ -14,7 +14,9 @@ import com.gayatri.dentalclinic.repository.DentistRepository;
 import com.gayatri.dentalclinic.repository.PatientRepository;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AppointmentService;
+import com.gayatri.dentalclinic.service.NotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -22,11 +24,13 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final PatientRepository patientRepository;
     private final DentistRepository dentistRepository;
+    private final NotificationService notificationService;
 
     @Override
     public AppointmentResponseDto createAppointment(AppointmentRequestDto requestDto) {
@@ -42,6 +46,11 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         Appointment appointment = AppointmentMapper.toEntity(requestDto, patient, dentist);
         Appointment savedAppointment = appointmentRepository.save(appointment);
+        try {
+            notificationService.sendAppointmentConfirmation(patient, dentist, savedAppointment);
+        } catch (Exception ex) {
+            log.warn("Failed to send appointment confirmation notification", ex);
+        }
         return AppointmentMapper.toDto(savedAppointment);
     }
 

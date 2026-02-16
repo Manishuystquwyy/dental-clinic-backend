@@ -5,13 +5,16 @@ import com.gayatri.dentalclinic.dto.response.PaymentResponseDto;
 import com.gayatri.dentalclinic.entity.Bill;
 import com.gayatri.dentalclinic.entity.Payment;
 import com.gayatri.dentalclinic.enums.PaymentStatus;
+import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.exception.NotFoundException;
 import com.gayatri.dentalclinic.mapper.PaymentMapper;
 import com.gayatri.dentalclinic.repository.BillRepository;
 import com.gayatri.dentalclinic.repository.PaymentRepository;
+import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.PaymentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -25,6 +28,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponseDto createPayment(PaymentRequestDto requestDto) {
+        denyIfPatient();
         Bill bill = billRepository.findById(requestDto.getBillId())
                 .orElseThrow(() -> new NotFoundException("Bill not found with id: " + requestDto.getBillId()));
 
@@ -41,6 +45,13 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public List<PaymentResponseDto> getAllPayments() {
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT) {
+            Long patientId = SecurityUtils.getCurrentPatientId();
+            return paymentRepository.findByBillAppointmentPatientId(patientId)
+                    .stream()
+                    .map(PaymentMapper::toDto)
+                    .toList();
+        }
         return paymentRepository.findAll()
                 .stream()
                 .map(PaymentMapper::toDto)
@@ -51,11 +62,13 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponseDto getPaymentById(Long id) {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
+        enforcePatientAccess(payment.getBill().getAppointment().getPatient().getId());
         return PaymentMapper.toDto(payment);
     }
 
     @Override
     public PaymentResponseDto updatePayment(Long id, PaymentRequestDto requestDto) {
+        denyIfPatient();
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
 
@@ -72,6 +85,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public void deletePayment(Long id) {
+        denyIfPatient();
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
         paymentRepository.delete(payment);
@@ -103,6 +117,21 @@ public class PaymentServiceImpl implements PaymentService {
             case FAILED, REFUNDED -> {
                 throw new BadRequestException("Cannot transition status from " + currentStatus);
             }
+        }
+    }
+
+    private void enforcePatientAccess(Long patientId) {
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT) {
+            Long currentPatientId = SecurityUtils.getCurrentPatientId();
+            if (currentPatientId == null || !currentPatientId.equals(patientId)) {
+                throw new AccessDeniedException("You can only access your own payments.");
+            }
+        }
+    }
+
+    private void denyIfPatient() {
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT) {
+            throw new AccessDeniedException("Patients are not allowed to modify payments.");
         }
     }
 }

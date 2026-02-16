@@ -12,6 +12,8 @@ public class DentistMapper {
                 .phone(dto.getPhone())
                 .email(dto.getEmail())
                 .experienceYears(dto.getExperienceYears())
+                .qualification(dto.getQualification())
+                .specialization(dto.getSpecialization())
                 .build();
     }
 
@@ -20,6 +22,8 @@ public class DentistMapper {
         dentist.setPhone(dto.getPhone());
         dentist.setEmail(dto.getEmail());
         dentist.setExperienceYears(dto.getExperienceYears());
+        dentist.setQualification(dto.getQualification());
+        dentist.setSpecialization(dto.getSpecialization());
     }
 
     public static DentistResponseDto toDto(Dentist dentist) {
@@ -29,6 +33,8 @@ public class DentistMapper {
                 .phone(dentist.getPhone())
                 .email(dentist.getEmail())
                 .experienceYears(dentist.getExperienceYears())
+                .qualification(dentist.getQualification())
+                .specialization(dentist.getSpecialization())
                 .build();
     }
 }
