@@ -9,4 +9,6 @@ public interface AuthService {
     AuthResponseDto registerPatient(AuthRegisterRequestDto requestDto);
     AuthResponseDto login(AuthLoginRequestDto requestDto);
     UserInfoDto getCurrentUser();
+    void forgotPassword(String email);
+    void resetPassword(String token, String newPassword);
 }

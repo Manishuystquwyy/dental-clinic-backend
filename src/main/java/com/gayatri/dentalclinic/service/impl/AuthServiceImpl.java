@@ -16,9 +16,16 @@ import com.gayatri.dentalclinic.security.CustomUserDetails;
 import com.gayatri.dentalclinic.security.JwtUtil;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AuthService;
+import com.gayatri.dentalclinic.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
     private final PatientRepository patientRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final NotificationService notificationService;
 
     @Override
     public AuthResponseDto registerPatient(AuthRegisterRequestDto requestDto) {
@@ -96,6 +104,34 @@ public class AuthServiceImpl implements AuthService {
         return account != null ? toUserInfo(account) : null;
     }
 
+    @Override
+    public void forgotPassword(String email) {
+        UserAccount account = userAccountRepository.findByEmail(email).orElse(null);
+        if (account == null) {
+            return;
+        }
+        String token = UUID.randomUUID().toString();
+        String tokenHash = sha256(token);
+        account.setResetTokenHash(tokenHash);
+        account.setResetTokenExpiry(LocalDateTime.now().plusMinutes(30));
+        userAccountRepository.save(account);
+        notificationService.sendPasswordResetEmail(email, token);
+    }
+
+    @Override
+    public void resetPassword(String token, String newPassword) {
+        String tokenHash = sha256(token);
+        UserAccount account = userAccountRepository.findByResetTokenHash(tokenHash)
+                .orElseThrow(() -> new BadRequestException("Invalid or expired token"));
+        if (account.getResetTokenExpiry() == null || account.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Invalid or expired token");
+        }
+        account.setPasswordHash(passwordEncoder.encode(newPassword));
+        account.setResetTokenHash(null);
+        account.setResetTokenExpiry(null);
+        userAccountRepository.save(account);
+    }
+
     private UserInfoDto toUserInfo(UserAccount account) {
         String name = null;
         Long patientId = null;
@@ -110,5 +146,15 @@ public class AuthServiceImpl implements AuthService {
                 .patientId(patientId)
                 .name(name)
                 .build();
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to hash token", e);
+        }
     }
 }

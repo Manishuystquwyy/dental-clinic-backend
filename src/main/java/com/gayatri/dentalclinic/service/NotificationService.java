@@ -7,4 +7,5 @@ import com.gayatri.dentalclinic.entity.Patient;
 public interface NotificationService {
 
     void sendAppointmentConfirmation(Patient patient, Dentist dentist, Appointment appointment);
+    void sendPasswordResetEmail(String toEmail, String resetToken);
 }

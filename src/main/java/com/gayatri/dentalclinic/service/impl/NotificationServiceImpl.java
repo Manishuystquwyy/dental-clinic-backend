@@ -21,14 +21,41 @@ public class NotificationServiceImpl implements NotificationService {
     @Value("${spring.mail.username:}")
     private String fromEmail;
 
+    @Value("${app.frontend.base-url:}")
+    private String frontendBaseUrl;
+
 
     @Override
     public void sendAppointmentConfirmation(Patient patient, Dentist dentist, Appointment appointment) {
         String message = buildMessage(patient, dentist, appointment);
-        sendEmail(patient.getEmail(), message);
+        sendEmail(patient.getEmail(), "Appointment Confirmation", message);
     }
 
-    private void sendEmail(String toEmail, String message) {
+    @Override
+    public void sendPasswordResetEmail(String toEmail, String resetToken) {
+        if (toEmail == null || toEmail.isBlank()) {
+            log.info("Skipping password reset email: email is empty");
+            return;
+        }
+        String message = buildResetMessage(resetToken);
+        sendEmail(toEmail, "Password Reset", message);
+    }
+
+
+    private String buildResetMessage(String resetToken) {
+        StringBuilder message = new StringBuilder();
+        message.append("Use this token to reset your password: ").append(resetToken);
+        if (frontendBaseUrl != null && !frontendBaseUrl.isBlank()) {
+            String base = frontendBaseUrl.endsWith("/")
+                    ? frontendBaseUrl.substring(0, frontendBaseUrl.length() - 1)
+                    : frontendBaseUrl;
+            message.append("\n\nReset link: ").append(base).append("/reset-password?token=")
+                    .append(resetToken);
+        }
+        return message.toString();
+    }
+
+    private void sendEmail(String toEmail, String subject, String message) {
         if (toEmail == null || toEmail.isBlank()) {
             log.info("Skipping email notification: patient email is empty");
             return;
@@ -40,7 +67,7 @@ public class NotificationServiceImpl implements NotificationService {
         SimpleMailMessage mail = new SimpleMailMessage();
         mail.setTo(toEmail);
         mail.setFrom(fromEmail);
-        mail.setSubject("Appointment Confirmation");
+        mail.setSubject(subject);
         mail.setText(message);
         mailSender.send(mail);
     }
