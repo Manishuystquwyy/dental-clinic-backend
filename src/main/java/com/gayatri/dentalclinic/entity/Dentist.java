@@ -27,4 +27,5 @@ public class Dentist {
     private int experienceYears;
     private String qualification;
     private String specialization;
+    private String pictureUrl;
 }

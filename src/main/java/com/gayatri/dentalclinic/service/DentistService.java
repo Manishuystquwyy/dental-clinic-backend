@@ -11,5 +11,6 @@ public interface DentistService {
     List<DentistResponseDto> getAllDentists();
     DentistResponseDto getDentistById(Long id);
     DentistResponseDto updateDentist(Long id, DentistRequestDto requestDto);
+    DentistResponseDto updateDentistPicture(Long id, String pictureUrl);
     void deleteDentist(Long id);
 }

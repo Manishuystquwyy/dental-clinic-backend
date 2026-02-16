@@ -34,4 +34,7 @@ public class DentistResponseDto {
 
     @Schema(description = "Specialization", example = "Orthodontist")
     private String specialization;
+
+    @Schema(description = "Profile image URL", example = "https://example.com/images/dentists/riya.jpg")
+    private String pictureUrl;
 }

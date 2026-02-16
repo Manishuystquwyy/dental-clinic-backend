@@ -68,6 +68,15 @@ public class DentistServiceImpl implements DentistService {
     }
 
     @Override
+    public DentistResponseDto updateDentistPicture(Long id, String pictureUrl) {
+        Dentist dentist = dentistRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + id));
+        dentist.setPictureUrl(pictureUrl);
+        Dentist savedDentist = dentistRepository.save(dentist);
+        return DentistMapper.toDto(savedDentist);
+    }
+
+    @Override
     public void deleteDentist(Long id) {
         Dentist dentist = dentistRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + id));

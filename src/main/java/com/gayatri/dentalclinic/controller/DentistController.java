@@ -2,6 +2,7 @@ package com.gayatri.dentalclinic.controller;
 
 import com.gayatri.dentalclinic.dto.request.DentistRequestDto;
 import com.gayatri.dentalclinic.dto.response.DentistResponseDto;
+import com.gayatri.dentalclinic.service.FileStorageService;
 import com.gayatri.dentalclinic.service.DentistService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,6 +16,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -25,6 +27,7 @@ import java.util.List;
 public class DentistController {
 
     private final DentistService dentistService;
+    private final FileStorageService fileStorageService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -85,5 +88,20 @@ public class DentistController {
             @Parameter(description = "Dentist id", example = "1")
             @PathVariable Long id) {
         dentistService.deleteDentist(id);
+    }
+
+    @PostMapping(value = "/{id}/picture", consumes = {"multipart/form-data"})
+    @Operation(summary = "Upload dentist picture", description = "Uploads a profile picture for a dentist.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Picture uploaded",
+                    content = @Content(schema = @Schema(implementation = DentistResponseDto.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid file", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Dentist not found", content = @Content)
+    })
+    public DentistResponseDto uploadPicture(
+            @Parameter(description = "Dentist id", example = "1") @PathVariable Long id,
+            @Parameter(description = "Image file") @RequestPart("file") MultipartFile file) {
+        String url = fileStorageService.storeDentistPicture(id, file);
+        return dentistService.updateDentistPicture(id, url);
     }
 }

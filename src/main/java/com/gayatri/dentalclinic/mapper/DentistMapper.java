@@ -14,6 +14,7 @@ public class DentistMapper {
                 .experienceYears(dto.getExperienceYears())
                 .qualification(dto.getQualification())
                 .specialization(dto.getSpecialization())
+                .pictureUrl(dto.getPictureUrl())
                 .build();
     }
 
@@ -24,6 +25,7 @@ public class DentistMapper {
         dentist.setExperienceYears(dto.getExperienceYears());
         dentist.setQualification(dto.getQualification());
         dentist.setSpecialization(dto.getSpecialization());
+        dentist.setPictureUrl(dto.getPictureUrl());
     }
 
     public static DentistResponseDto toDto(Dentist dentist) {
@@ -35,6 +37,7 @@ public class DentistMapper {
                 .experienceYears(dentist.getExperienceYears())
                 .qualification(dentist.getQualification())
                 .specialization(dentist.getSpecialization())
+                .pictureUrl(dentist.getPictureUrl())
                 .build();
     }
 }
