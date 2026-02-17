@@ -83,6 +83,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
         enforcePatientAccess(requestDto.getPatientId());
+        denyPatientCancelIfCompleted(appointment, requestDto);
 
         Patient patient = patientRepository.findById(requestDto.getPatientId())
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
@@ -99,6 +100,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT
+                && appointment.getStatus() == AppointmentStatus.COMPLETED) {
+            throw new AccessDeniedException("Completed appointments cannot be cancelled.");
+        }
         appointmentRepository.delete(appointment);
     }
 
@@ -108,6 +113,14 @@ public class AppointmentServiceImpl implements AppointmentService {
             if (currentPatientId == null || !currentPatientId.equals(patientId)) {
                 throw new AccessDeniedException("You can only access your own appointments.");
             }
+        }
+    }
+
+    private void denyPatientCancelIfCompleted(Appointment appointment, AppointmentRequestDto requestDto) {
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT
+                && appointment.getStatus() == AppointmentStatus.COMPLETED
+                && requestDto.getStatus() == AppointmentStatus.CANCELLED) {
+            throw new AccessDeniedException("Completed appointments cannot be cancelled.");
         }
     }
 }
