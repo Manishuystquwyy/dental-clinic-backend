@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.gayatri.dentalclinic.DentalClinicApplicationTests
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.411 s -- in com.gayatri.dentalclinic.DentalClinicApplicationTests
