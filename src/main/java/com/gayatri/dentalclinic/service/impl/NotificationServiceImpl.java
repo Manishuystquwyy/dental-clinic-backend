@@ -3,6 +3,7 @@ package com.gayatri.dentalclinic.service.impl;
 import com.gayatri.dentalclinic.entity.Appointment;
 import com.gayatri.dentalclinic.entity.Dentist;
 import com.gayatri.dentalclinic.entity.Patient;
+import com.gayatri.dentalclinic.entity.PublicRequest;
 import com.gayatri.dentalclinic.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,9 @@ public class NotificationServiceImpl implements NotificationService {
     @Value("${app.frontend.base-url:}")
     private String frontendBaseUrl;
 
+    @Value("${app.contact.recipient-email:}")
+    private String contactRecipientEmail;
+
 
     @Override
     public void sendAppointmentConfirmation(Patient patient, Dentist dentist, Appointment appointment) {
@@ -39,6 +43,37 @@ public class NotificationServiceImpl implements NotificationService {
         }
         String message = buildResetMessage(resetToken);
         sendEmail(toEmail, "Password Reset", message);
+    }
+
+    @Override
+    public void sendPublicRequestNotification(PublicRequest request) {
+        String recipient = contactRecipientEmail;
+        if (recipient == null || recipient.isBlank()) {
+            recipient = fromEmail;
+        }
+        if (recipient == null || recipient.isBlank()) {
+            log.warn("Skipping public request notification: no recipient configured");
+            return;
+        }
+        String subject = "New " + request.getRequestType().name().toLowerCase() + " request from " + request.getName();
+        String message = """
+                You received a new website request.
+
+                Type: %s
+                Name: %s
+                Phone: %s
+                Message:
+                %s
+
+                Submitted at: %s
+                """.formatted(
+                request.getRequestType(),
+                request.getName(),
+                request.getPhone(),
+                request.getMessage(),
+                request.getCreatedAt()
+        );
+        sendEmail(recipient, subject, message);
     }
 
 
