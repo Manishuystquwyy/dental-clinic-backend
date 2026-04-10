@@ -30,10 +30,12 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/public-requests").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/dentists/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/public-requests/**").hasAnyRole("DOCTOR", "ADMIN")
                         .requestMatchers("/api/dentists/**").hasAnyRole("DOCTOR", "ADMIN")
                         .requestMatchers("/api/patients/me").hasRole("PATIENT")
                         .requestMatchers("/api/patients/**").hasRole("ADMIN")
