@@ -7,6 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,6 +30,9 @@ public class DentistResponseDto {
 
     @Schema(description = "Years of experience", example = "8")
     private int experienceYears;
+
+    @Schema(description = "Consultation fees", example = "500.00")
+    private BigDecimal consultationFees;
 
     @Schema(description = "Highest qualification", example = "BDS")
     private String qualification;
