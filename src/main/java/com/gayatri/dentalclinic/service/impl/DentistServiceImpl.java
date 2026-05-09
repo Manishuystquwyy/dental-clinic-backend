@@ -1,5 +1,6 @@
 package com.gayatri.dentalclinic.service.impl;
 
+import com.gayatri.dentalclinic.config.CacheNames;
 import com.gayatri.dentalclinic.dto.request.DentistRequestDto;
 import com.gayatri.dentalclinic.dto.response.DentistResponseDto;
 import com.gayatri.dentalclinic.entity.Dentist;
@@ -9,6 +10,10 @@ import com.gayatri.dentalclinic.mapper.DentistMapper;
 import com.gayatri.dentalclinic.repository.DentistRepository;
 import com.gayatri.dentalclinic.service.DentistService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,6 +25,9 @@ public class DentistServiceImpl implements DentistService {
     private final DentistRepository dentistRepository;
 
     @Override
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.DENTISTS, allEntries = true)
+    })
     public DentistResponseDto createDentist(DentistRequestDto requestDto) {
         if (dentistRepository.existsByPhone(requestDto.getPhone())) {
             throw new BadRequestException("Phone number already exists");
@@ -35,6 +43,7 @@ public class DentistServiceImpl implements DentistService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.DENTISTS, sync = true)
     public List<DentistResponseDto> getAllDentists() {
         return dentistRepository.findAll()
                 .stream()
@@ -43,6 +52,7 @@ public class DentistServiceImpl implements DentistService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.DENTIST_BY_ID, key = "#id", sync = true)
     public DentistResponseDto getDentistById(Long id) {
         Dentist dentist = dentistRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + id));
@@ -50,6 +60,10 @@ public class DentistServiceImpl implements DentistService {
     }
 
     @Override
+    @Caching(
+            put = @CachePut(cacheNames = CacheNames.DENTIST_BY_ID, key = "#id"),
+            evict = @CacheEvict(cacheNames = CacheNames.DENTISTS, allEntries = true)
+    )
     public DentistResponseDto updateDentist(Long id, DentistRequestDto requestDto) {
         Dentist dentist = dentistRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + id));
@@ -68,6 +82,10 @@ public class DentistServiceImpl implements DentistService {
     }
 
     @Override
+    @Caching(
+            put = @CachePut(cacheNames = CacheNames.DENTIST_BY_ID, key = "#id"),
+            evict = @CacheEvict(cacheNames = CacheNames.DENTISTS, allEntries = true)
+    )
     public DentistResponseDto updateDentistPicture(Long id, String pictureUrl) {
         Dentist dentist = dentistRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + id));
@@ -77,6 +95,10 @@ public class DentistServiceImpl implements DentistService {
     }
 
     @Override
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.DENTIST_BY_ID, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.DENTISTS, allEntries = true)
+    })
     public void deleteDentist(Long id) {
         Dentist dentist = dentistRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + id));
