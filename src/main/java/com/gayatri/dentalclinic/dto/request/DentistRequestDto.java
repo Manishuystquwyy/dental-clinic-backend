@@ -2,13 +2,17 @@ package com.gayatri.dentalclinic.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -32,6 +36,11 @@ public class DentistRequestDto {
     @Schema(description = "Years of experience", example = "8")
     @Min(value = 0, message = "Experience years must be 0 or greater")
     private int experienceYears;
+
+    @Schema(description = "Consultation fees", example = "500.00")
+    @NotNull(message = "Consultation fees are required")
+    @DecimalMin(value = "0.0", inclusive = true, message = "Consultation fees must be 0 or greater")
+    private BigDecimal consultationFees;
 
     @Schema(description = "Highest qualification", example = "BDS")
     private String qualification;

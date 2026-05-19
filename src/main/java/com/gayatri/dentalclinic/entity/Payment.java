@@ -38,4 +38,9 @@ public class Payment {
 
     @Enumerated(EnumType.STRING)
     private PaymentStatus status;
+
+    private String gatewayOrderId;
+    private String gatewayPaymentId;
+    @Column(length = 512)
+    private String gatewaySignature;
 }

@@ -28,9 +28,10 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
+                        .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/public-requests").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/razorpay/webhook").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/dentists/**").permitAll()
@@ -39,6 +40,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/dentists/**").hasAnyRole("DOCTOR", "ADMIN")
                         .requestMatchers("/api/patients/me").hasRole("PATIENT")
                         .requestMatchers("/api/patients/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/payments/razorpay/order", "/api/payments/razorpay/verify")
+                        .hasRole("PATIENT")
+                        .requestMatchers(HttpMethod.POST, "/api/appointments").hasAnyRole("DOCTOR", "ADMIN")
                         .requestMatchers("/api/appointments/**").hasAnyRole("PATIENT", "DOCTOR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/bills/**", "/api/payments/**", "/api/treatments/**")
                         .hasAnyRole("PATIENT", "DOCTOR", "ADMIN")

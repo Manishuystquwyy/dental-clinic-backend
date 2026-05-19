@@ -34,4 +34,16 @@ public class UserAccount {
     private String resetTokenHash;
 
     private java.time.LocalDateTime resetTokenExpiry;
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
+    }
 }

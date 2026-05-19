@@ -1,5 +1,6 @@
 package com.gayatri.dentalclinic.service.impl;
 
+import com.gayatri.dentalclinic.config.CacheNames;
 import com.gayatri.dentalclinic.dto.request.PatientRequestDto;
 import com.gayatri.dentalclinic.dto.response.PatientResponseDto;
 import com.gayatri.dentalclinic.entity.Patient;
@@ -10,6 +11,10 @@ import com.gayatri.dentalclinic.repository.PatientRepository;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.PatientService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +27,7 @@ public class PatientServiceImpl implements PatientService {
     private final PatientRepository patientRepository;
 
     @Override
+    @CacheEvict(cacheNames = CacheNames.PATIENTS, allEntries = true)
     public PatientResponseDto createPatient(PatientRequestDto requestDto) {
         if(patientRepository.existsByPhone(requestDto.getPhone())){
             throw new BadRequestException("Phone number already exists");
@@ -38,6 +44,7 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.PATIENTS, sync = true)
     public List<PatientResponseDto> getAllPatients() {
         return patientRepository.findAll()
                 .stream()
@@ -46,6 +53,7 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheNames.PATIENT_BY_ID, key = "#id", sync = true)
     public PatientResponseDto getPatientById(Long id) {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + id));
@@ -53,6 +61,10 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
+    @Caching(
+            put = @CachePut(cacheNames = CacheNames.PATIENT_BY_ID, key = "#id"),
+            evict = @CacheEvict(cacheNames = CacheNames.PATIENTS, allEntries = true)
+    )
     public PatientResponseDto updatePatient(Long id, PatientRequestDto requestDto) {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + id));
@@ -71,6 +83,10 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.PATIENT_BY_ID, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.PATIENTS, allEntries = true)
+    })
     public void deletePatient(Long id) {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + id));
@@ -78,6 +94,12 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
+    @Cacheable(
+            cacheNames = CacheNames.PATIENT_BY_ID,
+            key = "T(com.gayatri.dentalclinic.security.SecurityUtils).getCurrentPatientId()",
+            condition = "T(com.gayatri.dentalclinic.security.SecurityUtils).getCurrentPatientId() != null",
+            sync = true
+    )
     public PatientResponseDto getCurrentPatient() {
         Long patientId = SecurityUtils.getCurrentPatientId();
         if (patientId == null) {
@@ -89,11 +111,32 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
+    @Caching(
+            put = @CachePut(
+                    cacheNames = CacheNames.PATIENT_BY_ID,
+                    key = "T(com.gayatri.dentalclinic.security.SecurityUtils).getCurrentPatientId()"
+            ),
+            evict = @CacheEvict(cacheNames = CacheNames.PATIENTS, allEntries = true)
+    )
     public PatientResponseDto updateCurrentPatient(PatientRequestDto requestDto) {
         Long patientId = SecurityUtils.getCurrentPatientId();
         if (patientId == null) {
             throw new AccessDeniedException("No patient account found.");
         }
-        return updatePatient(patientId, requestDto);
+
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundException("Patient not found with id: " + patientId));
+
+        if (patientRepository.existsByPhoneAndIdNot(requestDto.getPhone(), patientId)) {
+            throw new BadRequestException("Phone number already exists");
+        }
+        if (requestDto.getEmail() != null &&
+                patientRepository.existsByEmailAndIdNot(requestDto.getEmail(), patientId)) {
+            throw new BadRequestException("Email already exists");
+        }
+
+        PatientMapper.updateEntity(requestDto, patient);
+        Patient savedPatient = patientRepository.save(patient);
+        return PatientMapper.toDto(savedPatient);
     }
 }
