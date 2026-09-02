@@ -35,6 +35,12 @@ public class UserAccount {
 
     private java.time.LocalDateTime resetTokenExpiry;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean loginBlocked = false;
+
+    private java.time.LocalDateTime loginBlockedAt;
+
     public void setEmail(String email) {
         this.email = email;
     }
