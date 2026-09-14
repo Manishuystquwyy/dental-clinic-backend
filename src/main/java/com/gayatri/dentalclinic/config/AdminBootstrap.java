@@ -36,14 +36,28 @@ public class AdminBootstrap implements CommandLineRunner {
             log.info("Admin bootstrap skipped: app.admin.email/password not configured");
             return;
         }
-        if (userAccountRepository.existsByEmail(adminEmail)) {
-            return;
-        }
-        UserAccount admin = new UserAccount();
-        admin.setEmail(adminEmail);
-        admin.setPasswordHash(passwordEncoder.encode(adminPassword));
-        admin.setRole(Role.ADMIN);
-        userAccountRepository.save(admin);
-        log.info("Admin account created for {}", adminEmail);
+
+        userAccountRepository.findByEmail(adminEmail).ifPresentOrElse(existingAdmin -> {
+            boolean changed = false;
+            if (!passwordEncoder.matches(adminPassword, existingAdmin.getPasswordHash())) {
+                existingAdmin.setPasswordHash(passwordEncoder.encode(adminPassword));
+                changed = true;
+            }
+            if (existingAdmin.getRole() != Role.ADMIN) {
+                existingAdmin.setRole(Role.ADMIN);
+                changed = true;
+            }
+            if (changed) {
+                userAccountRepository.save(existingAdmin);
+                log.info("Admin account updated for {}", adminEmail);
+            }
+        }, () -> {
+            UserAccount admin = new UserAccount();
+            admin.setEmail(adminEmail);
+            admin.setPasswordHash(passwordEncoder.encode(adminPassword));
+            admin.setRole(Role.ADMIN);
+            userAccountRepository.save(admin);
+            log.info("Admin account created for {}", adminEmail);
+        });
     }
 }

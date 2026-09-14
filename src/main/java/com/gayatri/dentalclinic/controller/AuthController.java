@@ -10,6 +10,7 @@ import com.gayatri.dentalclinic.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,8 +35,8 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "Login with email and password")
     @ApiResponse(responseCode = "200", description = "Logged in")
-    public AuthResponseDto login(@Valid @RequestBody AuthLoginRequestDto requestDto) {
-        return authService.login(requestDto);
+    public AuthResponseDto login(@Valid @RequestBody AuthLoginRequestDto requestDto, HttpServletRequest request) {
+        return authService.login(requestDto, request);
     }
 
     @GetMapping("/me")

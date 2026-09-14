@@ -16,7 +16,9 @@ import com.gayatri.dentalclinic.security.CustomUserDetails;
 import com.gayatri.dentalclinic.security.JwtUtil;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AuthService;
+import com.gayatri.dentalclinic.service.LoginFraudDetectionService;
 import com.gayatri.dentalclinic.service.NotificationService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final NotificationService notificationService;
+    private final LoginFraudDetectionService loginFraudDetectionService;
 
     @Override
     public AuthResponseDto registerPatient(AuthRegisterRequestDto requestDto) {
@@ -79,14 +82,21 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public AuthResponseDto login(AuthLoginRequestDto requestDto) {
-        UserAccount account = userAccountRepository.findByEmail(requestDto.getEmail())
-                .orElseThrow(() -> new BadRequestException("Invalid email or password"));
+    public AuthResponseDto login(AuthLoginRequestDto requestDto, HttpServletRequest request) {
+        loginFraudDetectionService.checkLoginAllowed(requestDto.getEmail(), request);
 
-        if (!passwordEncoder.matches(requestDto.getPassword(), account.getPasswordHash())) {
+        UserAccount account = userAccountRepository.findByEmail(requestDto.getEmail()).orElse(null);
+        if (account == null) {
+            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), request, null);
             throw new BadRequestException("Invalid email or password");
         }
 
+        if (!passwordEncoder.matches(requestDto.getPassword(), account.getPasswordHash())) {
+            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), request, account);
+            throw new BadRequestException("Invalid email or password");
+        }
+
+        loginFraudDetectionService.recordSuccessfulLogin(requestDto.getEmail(), request);
         CustomUserDetails userDetails = CustomUserDetails.fromUserAccount(account);
         return AuthResponseDto.builder()
                 .token(jwtUtil.generateToken(userDetails))
@@ -129,6 +139,8 @@ public class AuthServiceImpl implements AuthService {
         account.setPasswordHash(passwordEncoder.encode(newPassword));
         account.setResetTokenHash(null);
         account.setResetTokenExpiry(null);
+        account.setLoginBlocked(false);
+        account.setLoginBlockedAt(null);
         userAccountRepository.save(account);
     }
 
