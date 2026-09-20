@@ -35,6 +35,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/dentists/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/appointments/availability").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/public-requests/**").hasAnyRole("DOCTOR", "ADMIN")
                         .requestMatchers("/api/dentists/**").hasAnyRole("DOCTOR", "ADMIN")

@@ -2,6 +2,7 @@ package com.gayatri.dentalclinic.service.impl;
 
 import com.gayatri.dentalclinic.dto.request.AppointmentRequestDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
+import com.gayatri.dentalclinic.dto.response.AppointmentAvailabilityResponseDto;
 import com.gayatri.dentalclinic.entity.Appointment;
 import com.gayatri.dentalclinic.entity.Dentist;
 import com.gayatri.dentalclinic.entity.Patient;
@@ -19,13 +20,25 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AppointmentServiceImpl implements AppointmentService {
+
+    private static final List<LocalTime> BOOKING_SLOTS = List.of(
+            LocalTime.of(10, 30), LocalTime.of(11, 0), LocalTime.of(14, 0),
+            LocalTime.of(14, 30), LocalTime.of(15, 30), LocalTime.of(16, 0),
+            LocalTime.of(16, 30), LocalTime.of(17, 0), LocalTime.of(17, 30),
+            LocalTime.of(18, 0));
+    private static final List<AppointmentStatus> SLOT_BLOCKING_STATUSES = List.of(
+            AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED);
 
     private final AppointmentRepository appointmentRepository;
     private final PatientRepository patientRepository;
@@ -33,16 +46,20 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final NotificationService notificationService;
 
     @Override
+    @Transactional
     public AppointmentResponseDto createAppointment(AppointmentRequestDto requestDto) {
         enforcePatientAccess(requestDto.getPatientId());
         Patient patient = patientRepository.findById(requestDto.getPatientId())
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
-        Dentist dentist = dentistRepository.findById(requestDto.getDentistId())
+        Dentist dentist = dentistRepository.findWithLockById(requestDto.getDentistId())
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + requestDto.getDentistId()));
 
         if (requestDto.getStatus() == null) {
             requestDto.setStatus(AppointmentStatus.BOOKED);
         }
+
+        ensureSlotIsAvailable(dentist.getId(), requestDto.getAppointmentDate(), requestDto.getAppointmentTime(), null,
+                requestDto.getStatus());
 
         Appointment appointment = AppointmentMapper.toEntity(requestDto, patient, dentist);
         Appointment savedAppointment = appointmentRepository.save(appointment);
@@ -78,6 +95,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    @Transactional
     public AppointmentResponseDto updateAppointment(Long id, AppointmentRequestDto requestDto) {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
@@ -87,8 +105,11 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         Patient patient = patientRepository.findById(requestDto.getPatientId())
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
-        Dentist dentist = dentistRepository.findById(requestDto.getDentistId())
+        Dentist dentist = dentistRepository.findWithLockById(requestDto.getDentistId())
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + requestDto.getDentistId()));
+
+        ensureSlotIsAvailable(dentist.getId(), requestDto.getAppointmentDate(), requestDto.getAppointmentTime(), appointment.getId(),
+                requestDto.getStatus());
 
         AppointmentMapper.updateEntity(requestDto, appointment, patient, dentist);
         Appointment savedAppointment = appointmentRepository.save(appointment);
@@ -105,6 +126,41 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new AccessDeniedException("Completed appointments cannot be cancelled.");
         }
         appointmentRepository.delete(appointment);
+    }
+
+    @Override
+    public AppointmentAvailabilityResponseDto getAvailability(Long dentistId, LocalDate appointmentDate) {
+        dentistRepository.findById(dentistId)
+                .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + dentistId));
+        Set<LocalTime> bookedSlots = appointmentRepository
+                .findByDentistIdAndAppointmentDateAndStatusIn(dentistId, appointmentDate, SLOT_BLOCKING_STATUSES)
+                .stream()
+                .map(Appointment::getAppointmentTime)
+                .collect(java.util.stream.Collectors.toSet());
+
+        return AppointmentAvailabilityResponseDto.builder()
+                .dentistId(dentistId)
+                .appointmentDate(appointmentDate)
+                .availableSlots(BOOKING_SLOTS.stream().filter(slot -> !bookedSlots.contains(slot)).toList())
+                .build();
+    }
+
+    private void ensureSlotIsAvailable(Long dentistId, LocalDate date, LocalTime time, Long appointmentId,
+                                       AppointmentStatus requestedStatus) {
+        if (requestedStatus == AppointmentStatus.CANCELLED) {
+            return;
+        }
+        if (!BOOKING_SLOTS.contains(time)) {
+            throw new com.gayatri.dentalclinic.exception.BadRequestException("The selected appointment time is not an available booking slot.");
+        }
+        boolean alreadyBooked = appointmentRepository
+                .findByDentistIdAndAppointmentDateAndStatusIn(dentistId, date, SLOT_BLOCKING_STATUSES)
+                .stream()
+                .anyMatch(existing -> !existing.getId().equals(appointmentId) && existing.getAppointmentTime().equals(time));
+        if (alreadyBooked) {
+            throw new com.gayatri.dentalclinic.exception.BadRequestException(
+                    "This dentist is no longer available for the selected date and time slot.");
+        }
     }
 
     private void enforcePatientAccess(Long patientId) {
