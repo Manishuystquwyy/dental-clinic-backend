@@ -6,6 +6,7 @@ import com.gayatri.dentalclinic.dto.response.AppointmentAvailabilityResponseDto;
 import com.gayatri.dentalclinic.entity.Appointment;
 import com.gayatri.dentalclinic.entity.Dentist;
 import com.gayatri.dentalclinic.entity.Patient;
+import com.gayatri.dentalclinic.entity.UserAccount;
 import com.gayatri.dentalclinic.enums.AppointmentStatus;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.NotFoundException;
@@ -13,6 +14,10 @@ import com.gayatri.dentalclinic.mapper.AppointmentMapper;
 import com.gayatri.dentalclinic.repository.AppointmentRepository;
 import com.gayatri.dentalclinic.repository.DentistRepository;
 import com.gayatri.dentalclinic.repository.PatientRepository;
+import com.gayatri.dentalclinic.repository.UserAccountRepository;
+import com.gayatri.dentalclinic.repository.MedicalRecordRepository;
+import com.gayatri.dentalclinic.exception.BadRequestException;
+import com.gayatri.dentalclinic.security.CustomUserDetails;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AppointmentService;
 import com.gayatri.dentalclinic.service.NotificationService;
@@ -43,12 +48,15 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final AppointmentRepository appointmentRepository;
     private final PatientRepository patientRepository;
     private final DentistRepository dentistRepository;
+    private final UserAccountRepository userAccountRepository;
     private final NotificationService notificationService;
+    private final MedicalRecordRepository medicalRecordRepository;
 
     @Override
     @Transactional
     public AppointmentResponseDto createAppointment(AppointmentRequestDto requestDto) {
         enforcePatientAccess(requestDto.getPatientId());
+        enforceDoctorAccess(requestDto.getDentistId());
         Patient patient = patientRepository.findById(requestDto.getPatientId())
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
         Dentist dentist = dentistRepository.findWithLockById(requestDto.getDentistId())
@@ -73,9 +81,11 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     public List<AppointmentResponseDto> getAllAppointments() {
+        if (SecurityUtils.getCurrentRole() == Role.DOCTOR) return getCurrentDoctorAppointments();
         List<Appointment> appointments;
         Long patientId = SecurityUtils.getCurrentPatientId();
-        if (SecurityUtils.getCurrentRole() == Role.PATIENT && patientId != null) {
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT) {
+            if (patientId == null) throw new AccessDeniedException("Patient profile is required.");
             appointments = appointmentRepository.findByPatientId(patientId);
         } else {
             appointments = appointmentRepository.findAll();
@@ -87,20 +97,50 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<AppointmentResponseDto> getCurrentDoctorAppointments() {
+        CustomUserDetails currentUser = SecurityUtils.getCurrentUser();
+        if (currentUser == null || currentUser.getRole() != Role.DOCTOR) {
+            throw new AccessDeniedException("Only doctors can access their appointments.");
+        }
+
+        UserAccount account = userAccountRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new NotFoundException("Current user account was not found"));
+        Dentist dentist = account.getDentist();
+        if (dentist == null) {
+            throw new NotFoundException("Doctor profile was not found for the current account");
+        }
+
+        return appointmentRepository
+                .findByDentistIdOrderByAppointmentDateAscAppointmentTimeAsc(dentist.getId())
+                .stream()
+                .map(AppointmentMapper::toDto)
+                .toList();
+    }
+
+    @Override
     public AppointmentResponseDto getAppointmentById(Long id) {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
+        enforceDoctorAccess(appointment.getDentist().getId());
         return AppointmentMapper.toDto(appointment);
     }
 
     @Override
     @Transactional
     public AppointmentResponseDto updateAppointment(Long id, AppointmentRequestDto requestDto) {
-        Appointment appointment = appointmentRepository.findById(id)
+        Appointment appointment = appointmentRepository.findWithLockById(id)
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
         enforcePatientAccess(requestDto.getPatientId());
+        enforceDoctorAccess(appointment.getDentist().getId());
+        enforceDoctorAccess(requestDto.getDentistId());
+        boolean changesOwner = !appointment.getPatient().getId().equals(requestDto.getPatientId())
+                || !appointment.getDentist().getId().equals(requestDto.getDentistId());
+        if (changesOwner && (SecurityUtils.getCurrentRole() != Role.ADMIN || medicalRecordRepository.existsByAppointmentId(id))) {
+            throw new BadRequestException("Patient and doctor cannot be changed for this appointment. Create a new appointment instead.");
+        }
         denyPatientCancelIfCompleted(appointment, requestDto);
 
         Patient patient = patientRepository.findById(requestDto.getPatientId())
@@ -117,10 +157,15 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    @Transactional
     public void deleteAppointment(Long id) {
-        Appointment appointment = appointmentRepository.findById(id)
+        Appointment appointment = appointmentRepository.findWithLockById(id)
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
+        enforceDoctorAccess(appointment.getDentist().getId());
+        if (medicalRecordRepository.existsByAppointmentId(id)) {
+            throw new BadRequestException("Appointments with medical records cannot be deleted. Cancel the appointment instead.");
+        }
         if (SecurityUtils.getCurrentRole() == Role.PATIENT
                 && appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new AccessDeniedException("Completed appointments cannot be cancelled.");
@@ -169,6 +214,16 @@ public class AppointmentServiceImpl implements AppointmentService {
             if (currentPatientId == null || !currentPatientId.equals(patientId)) {
                 throw new AccessDeniedException("You can only access your own appointments.");
             }
+        }
+    }
+
+    private void enforceDoctorAccess(Long dentistId) {
+        if (SecurityUtils.getCurrentRole() != Role.DOCTOR) return;
+        CustomUserDetails user = SecurityUtils.getCurrentUser();
+        UserAccount account = userAccountRepository.findById(user.getId())
+                .orElseThrow(() -> new AccessDeniedException("Doctor account not found."));
+        if (account.getDentist() == null || !account.getDentist().getId().equals(dentistId)) {
+            throw new AccessDeniedException("You can only access your own appointments.");
         }
     }
 

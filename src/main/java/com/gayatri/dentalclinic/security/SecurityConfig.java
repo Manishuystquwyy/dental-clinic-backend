@@ -30,6 +30,12 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                         .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/admin/doctors/**").hasRole("ADMIN")
+                        .requestMatchers("/api/appointments/*/medical-records/**").hasRole("DOCTOR")
+                        .requestMatchers("/api/medical-records/mine").hasRole("PATIENT")
+                        .requestMatchers(HttpMethod.GET, "/api/medical-records/**").hasAnyRole("PATIENT", "DOCTOR")
+                        .requestMatchers("/api/medical-records/**").denyAll()
+                        .requestMatchers(HttpMethod.GET, "/api/doctors/me/appointments").hasRole("DOCTOR")
                         .requestMatchers(HttpMethod.POST, "/api/public-requests").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/payments/razorpay/webhook").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
