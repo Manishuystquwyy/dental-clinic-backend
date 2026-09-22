@@ -26,6 +26,8 @@ Open **My Dashboard → My prescriptions & reports**. Records from all visits ap
 
 Deploy both frontend and backend together. With the repository's existing `spring.jpa.hibernate.ddl-auto=update` configuration, Hibernate creates the two new tables. For environments managed with explicit schema migrations, apply `db/medical-records.sql` before deployment instead.
 
+For databases that previously used object storage, also run `db/medical-records-legacy-storage.sql` against the application database. This migration makes the retired `object_key`, `storage_bucket`, and `storage_namespace` columns optional, without deleting their values or existing records. It is safe to rerun and does nothing when those columns are absent. Hibernate's schema update and `CREATE TABLE IF NOT EXISTS` do not remove their old `NOT NULL` constraints. Without this migration, new prescriptions and documents fail with MySQL error 1364 (missing default value), which older backend versions incorrectly display as “A record with the same unique value already exists”. This migration does not copy historical object-store files into database storage.
+
 The application limits each file to 10 MiB and multipart requests to 11 MiB. Configure the reverse proxy/load balancer to allow at least 11 MiB (`client_max_body_size 11m;` for an Nginx API location), and ensure the database's `max_allowed_packet` accommodates the upload plus statement overhead (at least 16 MiB).
 
 Back up both medical-record tables with the rest of MySQL and include them in restore checks. Database disk usage grows with uploaded documents; this implementation does not require a filesystem volume for these files. Production persistence depends on using the durable production database, not an in-memory development database.
@@ -46,3 +48,7 @@ Record types: `PRESCRIPTION`, `XRAY`, `REPORT`, `OTHER`. Titles are limited to 1
 ## Verification
 
 `./mvnw test` includes integration tests for issuing, listing and downloading prescriptions, file byte persistence, cross-patient and cross-doctor access denial, role restrictions, upload validation, cancelled appointments and protection against appointment reassignment/deletion.
+
+The medical-record suite also sends authenticated requests through a real HTTP server to verify prescription sharing, patient downloads, 10 MiB multipart uploads and oversized-file rejection. Repeated titles and file names are allowed for a visit.
+
+The optional `MedicalRecordMigrationMySqlTest` verifies the legacy schema failure and repair using MySQL. Set `TEST_MYSQL_URL`, `TEST_MYSQL_USERNAME` and `TEST_MYSQL_PASSWORD` in the environment, then run `./mvnw -Dtest=MedicalRecordMigrationMySqlTest test`. The database user must be able to create and drop a temporary database; the test uses a unique `medical_records_test_...` database and removes it afterwards, without changing application tables. It checks preservation of old references, repeated migration execution and fresh-schema compatibility. Without these environment variables this test is skipped.
