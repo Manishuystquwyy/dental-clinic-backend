@@ -26,6 +26,7 @@ import com.gayatri.dentalclinic.repository.PaymentRepository;
 import com.gayatri.dentalclinic.repository.RazorpayCheckoutSessionRepository;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.NotificationService;
+import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.RazorpayPaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,6 +68,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     private final PaymentRepository paymentRepository;
     private final RazorpayCheckoutSessionRepository checkoutSessionRepository;
     private final NotificationService notificationService;
+    private final BookingTime bookingTime;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
     @Value("${app.razorpay.key-id:}")
@@ -483,6 +485,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     }
 
     private void ensureSlotIsAvailable(Long dentistId, LocalDate date, LocalTime time) {
+        bookingTime.requireFuture(date, time);
         if (!BOOKING_SLOTS.contains(time)) {
             throw new BadRequestException("The selected appointment time is not an available booking slot.");
         }

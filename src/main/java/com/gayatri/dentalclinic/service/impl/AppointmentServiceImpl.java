@@ -20,6 +20,7 @@ import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.security.CustomUserDetails;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AppointmentService;
+import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
@@ -51,6 +53,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final UserAccountRepository userAccountRepository;
     private final NotificationService notificationService;
     private final MedicalRecordRepository medicalRecordRepository;
+    private final BookingTime bookingTime;
 
     @Override
     @Transactional
@@ -61,6 +64,8 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
         Dentist dentist = dentistRepository.findWithLockById(requestDto.getDentistId())
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + requestDto.getDentistId()));
+
+        bookingTime.requireFuture(requestDto.getAppointmentDate(), requestDto.getAppointmentTime());
 
         if (requestDto.getStatus() == null) {
             requestDto.setStatus(AppointmentStatus.BOOKED);
@@ -143,10 +148,20 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         denyPatientCancelIfCompleted(appointment, requestDto);
 
+        boolean changesSlot = changesOwner
+                || !appointment.getAppointmentDate().equals(requestDto.getAppointmentDate())
+                || !appointment.getAppointmentTime().equals(requestDto.getAppointmentTime());
+        boolean reopensBooking = requestDto.getStatus() == AppointmentStatus.BOOKED
+                && appointment.getStatus() != AppointmentStatus.BOOKED;
+
         Patient patient = patientRepository.findById(requestDto.getPatientId())
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
         Dentist dentist = dentistRepository.findWithLockById(requestDto.getDentistId())
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + requestDto.getDentistId()));
+
+        if (changesSlot || reopensBooking) {
+            bookingTime.requireFuture(requestDto.getAppointmentDate(), requestDto.getAppointmentTime());
+        }
 
         ensureSlotIsAvailable(dentist.getId(), requestDto.getAppointmentDate(), requestDto.getAppointmentTime(), appointment.getId(),
                 requestDto.getStatus());
@@ -183,10 +198,13 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .map(Appointment::getAppointmentTime)
                 .collect(java.util.stream.Collectors.toSet());
 
+        LocalDateTime now = bookingTime.now();
         return AppointmentAvailabilityResponseDto.builder()
                 .dentistId(dentistId)
                 .appointmentDate(appointmentDate)
-                .availableSlots(BOOKING_SLOTS.stream().filter(slot -> !bookedSlots.contains(slot)).toList())
+                .availableSlots(BOOKING_SLOTS.stream()
+                        .filter(slot -> appointmentDate.atTime(slot).isAfter(now))
+                        .filter(slot -> !bookedSlots.contains(slot)).toList())
                 .build();
     }
 
