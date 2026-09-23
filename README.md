@@ -2,6 +2,10 @@
 
 Spring Boot backend for Gayatri Dental Clinic.
 
+## Prescriptions and patient documents
+
+Doctors can write prescriptions and upload private patient documents from their dashboard. Patients can view and download their history. See [the workflow, API and deployment guide](docs/medical-records.md).
+
 ## Oracle Cloud MySQL
 
 For Oracle Cloud Free Tier database setup, use the OCI MySQL HeatWave profile and guide:

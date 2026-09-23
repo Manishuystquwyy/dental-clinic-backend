@@ -31,6 +31,10 @@ public class UserAccount {
     @JoinColumn(name = "patient_id")
     private Patient patient;
 
+    @OneToOne
+    @JoinColumn(name = "dentist_id", unique = true)
+    private Dentist dentist;
+
     private String resetTokenHash;
 
     private java.time.LocalDateTime resetTokenExpiry;
