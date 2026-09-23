@@ -60,6 +60,9 @@ public class AppointmentServiceImpl implements AppointmentService {
     public AppointmentResponseDto createAppointment(AppointmentRequestDto requestDto) {
         enforcePatientAccess(requestDto.getPatientId());
         enforceDoctorAccess(requestDto.getDentistId());
+        if (requestDto.getStatus() == AppointmentStatus.COMPLETED) {
+            throw new BadRequestException("Book the appointment first, then mark it complete after the consultation.");
+        }
         Patient patient = patientRepository.findById(requestDto.getPatientId())
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + requestDto.getPatientId()));
         Dentist dentist = dentistRepository.findWithLockById(requestDto.getDentistId())
@@ -151,6 +154,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         boolean changesSlot = changesOwner
                 || !appointment.getAppointmentDate().equals(requestDto.getAppointmentDate())
                 || !appointment.getAppointmentTime().equals(requestDto.getAppointmentTime());
+        validateCompletion(appointment, requestDto, changesSlot);
         boolean reopensBooking = requestDto.getStatus() == AppointmentStatus.BOOKED
                 && appointment.getStatus() != AppointmentStatus.BOOKED;
 
@@ -223,6 +227,24 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (alreadyBooked) {
             throw new com.gayatri.dentalclinic.exception.BadRequestException(
                     "This dentist is no longer available for the selected date and time slot.");
+        }
+    }
+
+    private void validateCompletion(Appointment appointment, AppointmentRequestDto requestDto, boolean changesSlot) {
+        if (requestDto.getStatus() != AppointmentStatus.COMPLETED) return;
+        Role role = SecurityUtils.getCurrentRole();
+        if (role != Role.DOCTOR && role != Role.ADMIN) {
+            throw new AccessDeniedException("Only the assigned doctor or an administrator can complete an appointment.");
+        }
+        if (appointment.getStatus() != AppointmentStatus.BOOKED
+                && appointment.getStatus() != AppointmentStatus.COMPLETED) {
+            throw new BadRequestException("Only booked appointments can be marked complete.");
+        }
+        if (changesSlot) {
+            throw new BadRequestException("Appointment details cannot be changed while marking it complete.");
+        }
+        if (appointment.getAppointmentDate().atTime(appointment.getAppointmentTime()).isAfter(bookingTime.now())) {
+            throw new BadRequestException("An appointment cannot be completed before its scheduled time.");
         }
     }
 

@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -180,6 +181,7 @@ class AppointmentServiceImplTest {
 
     @Test
     void existingPastAppointmentsCanStillBeCompletedOrCancelled() {
+        authenticate(Role.ADMIN, null);
         stubPatientAndDentist();
         when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
         for (var status : List.of(AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED)) {
@@ -188,6 +190,116 @@ class AppointmentServiceImplTest {
             assertEquals(status, service.updateAppointment(25L,
                     request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), status)).getStatus());
         }
+    }
+
+    @Test
+    void assignedDoctorCanCompleteABookedConsultation() {
+        authenticateDoctorForDentist(10L);
+        stubPatientAndDentist();
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        var result = service.updateAppointment(25L, completionRequest(appointment));
+
+        assertEquals(AppointmentStatus.COMPLETED, result.getStatus());
+        verify(appointmentRepository).save(appointment);
+    }
+
+    @Test
+    void anotherDoctorCannotCompleteTheAppointment() {
+        authenticateDoctorForDentist(11L);
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        assertThrows(AccessDeniedException.class, () -> service.updateAppointment(25L, completionRequest(appointment)));
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @Test
+    void patientCannotMarkTheirOwnAppointmentComplete() {
+        authenticate(Role.PATIENT, 3L);
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        assertThrows(AccessDeniedException.class, () -> service.updateAppointment(25L, completionRequest(appointment)));
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelledAppointmentCannotBeCompleted() {
+        authenticate(Role.ADMIN, null);
+        var appointment = existingAppointment(AppointmentStatus.CANCELLED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        assertThrows(BadRequestException.class, () -> service.updateAppointment(25L, completionRequest(appointment)));
+        assertEquals(AppointmentStatus.CANCELLED, appointment.getStatus());
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @Test
+    void futureConsultationCannotBeCompletedByDoctorOrAdmin() {
+        for (var role : List.of(Role.DOCTOR, Role.ADMIN)) {
+            if (role == Role.DOCTOR) authenticateDoctorForDentist(10L);
+            else authenticate(role, null);
+            var appointment = existingAppointment(AppointmentStatus.BOOKED);
+            appointment.setAppointmentDate(LocalDate.of(2026, 9, 24));
+            appointment.setAppointmentTime(LocalTime.of(14, 30));
+            when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+            assertThrows(BadRequestException.class, () -> service.updateAppointment(25L, completionRequest(appointment)));
+        }
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @Test
+    void completionIsAllowedAtScheduledTimeAndCanBeRetried() {
+        authenticateDoctorForDentist(10L);
+        stubPatientAndDentist();
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        appointment.setAppointmentDate(LocalDate.of(2026, 9, 24));
+        appointment.setAppointmentTime(LocalTime.of(14, 0));
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        assertEquals(AppointmentStatus.COMPLETED, service.updateAppointment(25L, completionRequest(appointment)).getStatus());
+        assertEquals(AppointmentStatus.COMPLETED, service.updateAppointment(25L, completionRequest(appointment)).getStatus());
+    }
+
+    @Test
+    void completionCannotChangeTheScheduledSlot() {
+        authenticate(Role.ADMIN, null);
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        var request = completionRequest(appointment);
+        request.setAppointmentTime(LocalTime.of(11, 0));
+
+        assertThrows(BadRequestException.class, () -> service.updateAppointment(25L, request));
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @Test
+    void newAppointmentCannotStartInCompletedStatus() {
+        authenticate(Role.ADMIN, null);
+        assertThrows(BadRequestException.class, () -> service.createAppointment(
+                request(LocalDate.of(2026, 9, 25), LocalTime.of(10, 30), AppointmentStatus.COMPLETED)));
+        verifyNoInteractions(appointmentRepository);
+    }
+
+    private AppointmentRequestDto completionRequest(Appointment appointment) {
+        return request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), AppointmentStatus.COMPLETED);
+    }
+
+    private void authenticateDoctorForDentist(Long dentistId) {
+        authenticateAsDoctor(7L);
+        when(userAccountRepository.findById(7L)).thenReturn(Optional.of(UserAccount.builder()
+                .id(7L).role(Role.DOCTOR).dentist(Dentist.builder().id(dentistId).build()).build()));
+    }
+
+    private void authenticate(Role role, Long patientId) {
+        var user = new CustomUserDetails(2L, "user@example.com", "hash", role, patientId);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }
 
     private AppointmentRequestDto request(LocalDate date, LocalTime time, AppointmentStatus status) {
