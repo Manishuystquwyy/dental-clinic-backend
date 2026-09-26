@@ -40,7 +40,8 @@ class RazorpayBookingTimeTest {
     void setUp() {
         service = new RazorpayPaymentServiceImpl(dentists, patients, appointments, bills, payments,
                 sessions, mock(NotificationService.class),
-                new BookingTime(Clock.fixed(Instant.parse("2026-09-24T08:30:00Z"), ZoneOffset.UTC)));
+                new BookingTime(Clock.fixed(Instant.parse("2026-09-24T08:30:00Z"), ZoneOffset.UTC)),
+                mock(org.springframework.web.client.RestClient.class));
     }
 
     @AfterEach
@@ -76,7 +77,7 @@ class RazorpayBookingTimeTest {
         when(dentists.findWithLockById(10L)).thenReturn(Optional.of(dentist));
         String payload = """
                 {"event":"payment.captured","payload":{"payment":{"entity":{
-                "order_id":"order_test","id":"pay_test","amount":10000,"status":"captured"}}}}
+                "order_id":"order_test","id":"pay_test","amount":10000,"status":"captured","created_at":1790238600}}}}
                 """;
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec("test-secret".getBytes(StandardCharsets.UTF_8), "HmacSHA256"));

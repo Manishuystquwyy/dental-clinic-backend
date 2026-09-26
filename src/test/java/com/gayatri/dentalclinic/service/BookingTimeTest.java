@@ -7,6 +7,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BookingTimeTest {
     @Test
+    void paymentDateUsesIndianMidnightRegardlessOfProcessingDay() {
+        BookingTime time = new BookingTime(Clock.fixed(Instant.parse("2026-09-27T00:00:00Z"), ZoneOffset.UTC));
+        assertEquals(LocalDate.of(2026, 9, 24), time.dateAt(Instant.parse("2026-09-24T18:29:59Z")));
+        assertEquals(LocalDate.of(2026, 9, 25), time.dateAt(Instant.parse("2026-09-24T18:30:00Z")));
+        assertEquals(LocalDate.of(2026, 9, 25), time.dateAt(Instant.parse("2026-09-24T19:59:53Z")));
+    }
+    @Test
     void usesClinicDateEvenWhenUtcIsStillYesterday() {
         BookingTime time = new BookingTime(Clock.fixed(Instant.parse("2026-09-23T19:00:00Z"), ZoneOffset.UTC));
         assertEquals(LocalDateTime.of(2026, 9, 24, 0, 30), time.now());

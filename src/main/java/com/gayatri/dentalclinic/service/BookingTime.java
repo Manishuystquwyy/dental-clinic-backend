@@ -4,6 +4,7 @@ import com.gayatri.dentalclinic.exception.BadRequestException;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -24,6 +25,10 @@ public class BookingTime {
 
     public LocalDateTime now() {
         return LocalDateTime.now(clock);
+    }
+
+    public LocalDate dateAt(Instant instant) {
+        return instant.atZone(CLINIC_ZONE).toLocalDate();
     }
 
     public void requireFuture(LocalDate date, LocalTime time) {
