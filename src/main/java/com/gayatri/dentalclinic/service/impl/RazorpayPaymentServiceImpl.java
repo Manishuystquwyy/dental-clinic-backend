@@ -28,7 +28,6 @@ import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.NotificationService;
 import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.RazorpayPaymentService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -53,7 +52,6 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
 
@@ -74,17 +72,38 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     private final RestClient razorpayRestClient;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
-    @Value("${app.razorpay.key-id:}")
-    private String razorpayKeyId;
+    private final String razorpayKeyId;
+    private final String razorpayKeySecret;
+    private final String currency;
+    private final String razorpayWebhookSecret;
 
-    @Value("${app.razorpay.key-secret:}")
-    private String razorpayKeySecret;
-
-    @Value("${app.razorpay.currency:INR}")
-    private String currency;
-
-    @Value("${app.razorpay.webhook-secret:}")
-    private String razorpayWebhookSecret;
+    public RazorpayPaymentServiceImpl(DentistRepository dentistRepository,
+            PatientRepository patientRepository,
+            AppointmentRepository appointmentRepository,
+            BillRepository billRepository,
+            PaymentRepository paymentRepository,
+            RazorpayCheckoutSessionRepository checkoutSessionRepository,
+            NotificationService notificationService,
+            BookingTime bookingTime,
+            RestClient razorpayRestClient,
+            @Value("${app.razorpay.key-id:}") String razorpayKeyId,
+            @Value("${app.razorpay.key-secret:}") String razorpayKeySecret,
+            @Value("${app.razorpay.currency:INR}") String currency,
+            @Value("${app.razorpay.webhook-secret:}") String razorpayWebhookSecret) {
+        this.dentistRepository = dentistRepository;
+        this.patientRepository = patientRepository;
+        this.appointmentRepository = appointmentRepository;
+        this.billRepository = billRepository;
+        this.paymentRepository = paymentRepository;
+        this.checkoutSessionRepository = checkoutSessionRepository;
+        this.notificationService = notificationService;
+        this.bookingTime = bookingTime;
+        this.razorpayRestClient = razorpayRestClient;
+        this.razorpayKeyId = razorpayKeyId;
+        this.razorpayKeySecret = razorpayKeySecret;
+        this.currency = currency;
+        this.razorpayWebhookSecret = razorpayWebhookSecret;
+    }
 
     @Override
     public RazorpayOrderResponseDto createOrder(RazorpayOrderRequestDto requestDto) {

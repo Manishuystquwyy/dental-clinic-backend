@@ -23,12 +23,15 @@ public class Bill {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "appointment_id")
     private Appointment appointment;
 
+    @Column(precision = 38, scale = 2)
     private BigDecimal totalAmount;
+    @Column(precision = 38, scale = 2)
     private BigDecimal discount;
+    @Column(precision = 38, scale = 2)
     private BigDecimal finalAmount;
     private LocalDate billDate;
 

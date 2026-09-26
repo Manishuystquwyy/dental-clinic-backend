@@ -25,13 +25,14 @@ public class Payment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bill_id")
     private Bill bill;
 
     @Enumerated(EnumType.STRING)
     private PaymentMode paymentMode;
 
+    @Column(precision = 38, scale = 2)
     private BigDecimal amount;
 
     private LocalDate paymentDate;

@@ -27,11 +27,11 @@ public class UserAccount {
     @Column(nullable = false)
     private Role role;
 
-    @OneToOne
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id")
     private Patient patient;
 
-    @OneToOne
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dentist_id", unique = true)
     private Dentist dentist;
 

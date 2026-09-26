@@ -22,7 +22,7 @@ public class Treatment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "appointment_id")
     private Appointment appointment;
 
@@ -31,5 +31,6 @@ public class Treatment {
 
     private String description;
 
+    @Column(precision = 38, scale = 2)
     private BigDecimal cost;
 }

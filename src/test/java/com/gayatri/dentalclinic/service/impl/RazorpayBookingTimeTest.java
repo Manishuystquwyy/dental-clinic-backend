@@ -13,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -41,7 +40,7 @@ class RazorpayBookingTimeTest {
         service = new RazorpayPaymentServiceImpl(dentists, patients, appointments, bills, payments,
                 sessions, mock(NotificationService.class),
                 new BookingTime(Clock.fixed(Instant.parse("2026-09-24T08:30:00Z"), ZoneOffset.UTC)),
-                mock(org.springframework.web.client.RestClient.class));
+                mock(org.springframework.web.client.RestClient.class), "", "", "INR", "test-secret");
     }
 
     @AfterEach
@@ -69,7 +68,6 @@ class RazorpayBookingTimeTest {
 
     @Test
     void paymentCompletionCannotCreateAnAppointmentAfterTheSlotHasStarted() throws Exception {
-        ReflectionTestUtils.setField(service, "razorpayWebhookSecret", "test-secret");
         var session = RazorpayCheckoutSession.builder().dentist(dentist)
                 .appointmentDate(LocalDate.of(2026, 9, 24)).appointmentTime(LocalTime.of(14, 0))
                 .amount(BigDecimal.valueOf(100)).build();

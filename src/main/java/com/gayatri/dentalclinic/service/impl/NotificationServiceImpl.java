@@ -5,7 +5,6 @@ import com.gayatri.dentalclinic.entity.Dentist;
 import com.gayatri.dentalclinic.entity.Patient;
 import com.gayatri.dentalclinic.entity.PublicRequest;
 import com.gayatri.dentalclinic.service.NotificationService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
@@ -13,21 +12,24 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class NotificationServiceImpl implements NotificationService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${spring.mail.username:}")
-    private String fromEmail;
+    private final String fromEmail;
+    private final String frontendBaseUrl;
+    private final String contactRecipientEmail;
 
-    @Value("${app.frontend.base-url:}")
-    private String frontendBaseUrl;
-
-    @Value("${app.contact.recipient-email:}")
-    private String contactRecipientEmail;
-
+    public NotificationServiceImpl(JavaMailSender mailSender,
+            @Value("${spring.mail.username:}") String fromEmail,
+            @Value("${app.frontend.base-url:}") String frontendBaseUrl,
+            @Value("${app.contact.recipient-email:}") String contactRecipientEmail) {
+        this.mailSender = mailSender;
+        this.fromEmail = fromEmail;
+        this.frontendBaseUrl = frontendBaseUrl;
+        this.contactRecipientEmail = contactRecipientEmail;
+    }
 
     @Override
     public void sendAppointmentConfirmation(Patient patient, Dentist dentist, Appointment appointment) {
@@ -75,7 +77,6 @@ public class NotificationServiceImpl implements NotificationService {
         );
         sendEmail(recipient, subject, message);
     }
-
 
     private String buildResetMessage(String resetToken) {
         StringBuilder message = new StringBuilder();

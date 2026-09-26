@@ -5,10 +5,8 @@ import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.exception.TooManyRequestsException;
 import com.gayatri.dentalclinic.repository.LoginAttemptRepository;
 import com.gayatri.dentalclinic.repository.UserAccountRepository;
-import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
@@ -23,22 +21,14 @@ class LoginFraudDetectionServiceImplTest {
 
     private LoginAttemptRepository loginAttemptRepository;
     private UserAccountRepository userAccountRepository;
-    private HttpServletRequest request;
+    private final String ipAddress = "127.0.0.1";
     private LoginFraudDetectionServiceImpl service;
 
     @BeforeEach
     void setUp() {
         loginAttemptRepository = mock(LoginAttemptRepository.class);
         userAccountRepository = mock(UserAccountRepository.class);
-        request = mock(HttpServletRequest.class);
-        service = new LoginFraudDetectionServiceImpl(loginAttemptRepository, userAccountRepository);
-
-        ReflectionTestUtils.setField(service, "maxFailedAttempts", 5);
-        ReflectionTestUtils.setField(service, "failedAttemptWindowMinutes", 15L);
-        ReflectionTestUtils.setField(service, "ipRateLimitAttempts", 10L);
-        ReflectionTestUtils.setField(service, "ipRateLimitWindowMinutes", 10L);
-
-        when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+        service = new LoginFraudDetectionServiceImpl(loginAttemptRepository, userAccountRepository, 5, 15L, 10L, 10L);
     }
 
     @Test
@@ -50,7 +40,7 @@ class LoginFraudDetectionServiceImplTest {
 
         TooManyRequestsException ex = assertThrows(
                 TooManyRequestsException.class,
-                () -> service.checkLoginAllowed("ava.sharma@example.com", request)
+                () -> service.checkLoginAllowed("ava.sharma@example.com", ipAddress)
         );
 
         assertEquals("Too many login attempts. Please try again later.", ex.getMessage());
@@ -70,7 +60,7 @@ class LoginFraudDetectionServiceImplTest {
 
         BadRequestException ex = assertThrows(
                 BadRequestException.class,
-                () -> service.recordFailedLogin("ava.sharma@example.com", request, account)
+                () -> service.recordFailedLogin("ava.sharma@example.com", ipAddress, account)
         );
 
         assertEquals("Account is blocked. Please reset the password.", ex.getMessage());
@@ -90,7 +80,7 @@ class LoginFraudDetectionServiceImplTest {
 
         BadRequestException ex = assertThrows(
                 BadRequestException.class,
-                () -> service.checkLoginAllowed("ava.sharma@example.com", request)
+                () -> service.checkLoginAllowed("ava.sharma@example.com", ipAddress)
         );
 
         assertEquals("Account is blocked. Please reset the password.", ex.getMessage());
@@ -101,7 +91,7 @@ class LoginFraudDetectionServiceImplTest {
         Method method = LoginFraudDetectionServiceImpl.class.getMethod(
                 "recordFailedLogin",
                 String.class,
-                HttpServletRequest.class,
+                String.class,
                 UserAccount.class
         );
 

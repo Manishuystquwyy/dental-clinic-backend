@@ -6,12 +6,11 @@ import com.gayatri.dentalclinic.dto.request.DoctorRegistrationRequestDto;
 import com.gayatri.dentalclinic.dto.response.AuthResponseDto;
 import com.gayatri.dentalclinic.dto.response.DoctorRegistrationResponseDto;
 import com.gayatri.dentalclinic.dto.response.UserInfoDto;
-import jakarta.servlet.http.HttpServletRequest;
 
 public interface AuthService {
     AuthResponseDto registerPatient(AuthRegisterRequestDto requestDto);
     DoctorRegistrationResponseDto registerDoctor(DoctorRegistrationRequestDto requestDto);
-    AuthResponseDto login(AuthLoginRequestDto requestDto, HttpServletRequest request);
+    AuthResponseDto login(AuthLoginRequestDto requestDto, String ipAddress);
     UserInfoDto getCurrentUser();
     void forgotPassword(String email);
     void resetPassword(String token, String newPassword);

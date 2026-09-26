@@ -22,7 +22,6 @@ import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AuthService;
 import com.gayatri.dentalclinic.service.LoginFraudDetectionService;
 import com.gayatri.dentalclinic.service.NotificationService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -127,21 +126,21 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public AuthResponseDto login(AuthLoginRequestDto requestDto, HttpServletRequest request) {
-        loginFraudDetectionService.checkLoginAllowed(requestDto.getEmail(), request);
+    public AuthResponseDto login(AuthLoginRequestDto requestDto, String ipAddress) {
+        loginFraudDetectionService.checkLoginAllowed(requestDto.getEmail(), ipAddress);
 
         UserAccount account = userAccountRepository.findByEmail(requestDto.getEmail()).orElse(null);
         if (account == null) {
-            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), request, null);
+            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), ipAddress, null);
             throw new BadRequestException("Invalid email or password");
         }
 
         if (!passwordEncoder.matches(requestDto.getPassword(), account.getPasswordHash())) {
-            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), request, account);
+            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), ipAddress, account);
             throw new BadRequestException("Invalid email or password");
         }
 
-        loginFraudDetectionService.recordSuccessfulLogin(requestDto.getEmail(), request);
+        loginFraudDetectionService.recordSuccessfulLogin(requestDto.getEmail(), ipAddress);
         CustomUserDetails userDetails = CustomUserDetails.fromUserAccount(account);
         return AuthResponseDto.builder()
                 .token(jwtUtil.generateToken(userDetails))
@@ -150,6 +149,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserInfoDto getCurrentUser() {
         CustomUserDetails current = SecurityUtils.getCurrentUser();
         if (current == null) {

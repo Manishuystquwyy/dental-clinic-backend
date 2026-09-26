@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -44,11 +43,7 @@ class RazorpayTimezoneTest {
 
     private RazorpayPaymentServiceImpl service(String now) {
         var service = new RazorpayPaymentServiceImpl(dentists, patients, appointments, bills, payments, sessions,
-                mock(NotificationService.class), new BookingTime(Clock.fixed(Instant.parse(now), ZoneOffset.UTC)), builder.build());
-        ReflectionTestUtils.setField(service, "razorpayKeyId", "test");
-        ReflectionTestUtils.setField(service, "razorpayKeySecret", "test-secret");
-        ReflectionTestUtils.setField(service, "razorpayWebhookSecret", "test-secret");
-        ReflectionTestUtils.setField(service, "currency", "INR");
+                mock(NotificationService.class), new BookingTime(Clock.fixed(Instant.parse(now), ZoneOffset.UTC)), builder.build(), "test", "test-secret", "INR", "test-secret");
         var user = new CustomUserDetails(2L, "patient@example.com", "hash", Role.PATIENT, 3L);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
         return service;

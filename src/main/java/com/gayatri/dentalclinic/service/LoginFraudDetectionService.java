@@ -2,10 +2,8 @@ package com.gayatri.dentalclinic.service;
 
 import com.gayatri.dentalclinic.entity.UserAccount;
 
-import jakarta.servlet.http.HttpServletRequest;
-
 public interface LoginFraudDetectionService {
-    void checkLoginAllowed(String email, HttpServletRequest request);
-    void recordSuccessfulLogin(String email, HttpServletRequest request);
-    void recordFailedLogin(String email, HttpServletRequest request, UserAccount account);
+    void checkLoginAllowed(String email, String ipAddress);
+    void recordSuccessfulLogin(String email, String ipAddress);
+    void recordFailedLogin(String email, String ipAddress, UserAccount account);
 }

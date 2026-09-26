@@ -7,8 +7,6 @@ import com.gayatri.dentalclinic.exception.TooManyRequestsException;
 import com.gayatri.dentalclinic.repository.LoginAttemptRepository;
 import com.gayatri.dentalclinic.repository.UserAccountRepository;
 import com.gayatri.dentalclinic.service.LoginFraudDetectionService;
-import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +15,6 @@ import java.time.LocalDateTime;
 import java.util.Locale;
 
 @Service
-@RequiredArgsConstructor
 public class LoginFraudDetectionServiceImpl implements LoginFraudDetectionService {
 
     private static final String ACCOUNT_BLOCKED_MESSAGE = "Account is blocked. Please reset the password.";
@@ -26,22 +23,28 @@ public class LoginFraudDetectionServiceImpl implements LoginFraudDetectionServic
     private final LoginAttemptRepository loginAttemptRepository;
     private final UserAccountRepository userAccountRepository;
 
-    @Value("${app.security.login.max-failed-attempts:5}")
-    private int maxFailedAttempts;
+    private final int maxFailedAttempts;
+    private final long failedAttemptWindowMinutes;
+    private final long ipRateLimitAttempts;
+    private final long ipRateLimitWindowMinutes;
 
-    @Value("${app.security.login.failed-attempt-window-minutes:15}")
-    private long failedAttemptWindowMinutes;
-
-    @Value("${app.security.login.ip-rate-limit-attempts:10}")
-    private long ipRateLimitAttempts;
-
-    @Value("${app.security.login.ip-rate-limit-window-minutes:10}")
-    private long ipRateLimitWindowMinutes;
+    public LoginFraudDetectionServiceImpl(LoginAttemptRepository loginAttemptRepository,
+            UserAccountRepository userAccountRepository,
+            @Value("${app.security.login.max-failed-attempts:5}") int maxFailedAttempts,
+            @Value("${app.security.login.failed-attempt-window-minutes:15}") long failedAttemptWindowMinutes,
+            @Value("${app.security.login.ip-rate-limit-attempts:10}") long ipRateLimitAttempts,
+            @Value("${app.security.login.ip-rate-limit-window-minutes:10}") long ipRateLimitWindowMinutes) {
+        this.loginAttemptRepository = loginAttemptRepository;
+        this.userAccountRepository = userAccountRepository;
+        this.maxFailedAttempts = maxFailedAttempts;
+        this.failedAttemptWindowMinutes = failedAttemptWindowMinutes;
+        this.ipRateLimitAttempts = ipRateLimitAttempts;
+        this.ipRateLimitWindowMinutes = ipRateLimitWindowMinutes;
+    }
 
     @Override
     @Transactional(readOnly = true)
-    public void checkLoginAllowed(String email, HttpServletRequest request) {
-        String ipAddress = resolveClientIp(request);
+    public void checkLoginAllowed(String email, String ipAddress) {
         LocalDateTime ipWindowStart = LocalDateTime.now().minusMinutes(ipRateLimitWindowMinutes);
         long recentIpAttempts = loginAttemptRepository.countByIpAddressAndAttemptedAtGreaterThanEqual(
                 ipAddress,
@@ -60,14 +63,14 @@ public class LoginFraudDetectionServiceImpl implements LoginFraudDetectionServic
 
     @Override
     @Transactional
-    public void recordSuccessfulLogin(String email, HttpServletRequest request) {
-        saveAttempt(email, request, true);
+    public void recordSuccessfulLogin(String email, String ipAddress) {
+        saveAttempt(email, ipAddress, true);
     }
 
     @Override
     @Transactional(noRollbackFor = BadRequestException.class)
-    public void recordFailedLogin(String email, HttpServletRequest request, UserAccount account) {
-        saveAttempt(email, request, false);
+    public void recordFailedLogin(String email, String ipAddress, UserAccount account) {
+        saveAttempt(email, ipAddress, false);
 
         if (account == null || account.isLoginBlocked()) {
             return;
@@ -83,27 +86,13 @@ public class LoginFraudDetectionServiceImpl implements LoginFraudDetectionServic
         }
     }
 
-    private void saveAttempt(String email, HttpServletRequest request, boolean successful) {
+    private void saveAttempt(String email, String ipAddress, boolean successful) {
         loginAttemptRepository.save(LoginAttempt.builder()
                 .email(normalizeEmail(email))
-                .ipAddress(resolveClientIp(request))
+                .ipAddress(ipAddress)
                 .successful(successful)
                 .attemptedAt(LocalDateTime.now())
                 .build());
-    }
-
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp.trim();
-        }
-
-        return request.getRemoteAddr();
     }
 
     private String normalizeEmail(String email) {
