@@ -24,6 +24,9 @@ public class AppointmentResponseDto {
     @Schema(description = "Patient id", example = "1")
     private Long patientId;
 
+    @Schema(description = "Patient full name", example = "Ava Sharma")
+    private String patientName;
+
     @Schema(description = "Dentist id", example = "1")
     private Long dentistId;
 

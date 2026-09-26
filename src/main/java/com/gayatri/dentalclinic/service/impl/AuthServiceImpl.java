@@ -2,15 +2,19 @@ package com.gayatri.dentalclinic.service.impl;
 
 import com.gayatri.dentalclinic.dto.request.AuthLoginRequestDto;
 import com.gayatri.dentalclinic.dto.request.AuthRegisterRequestDto;
+import com.gayatri.dentalclinic.dto.request.DoctorRegistrationRequestDto;
 import com.gayatri.dentalclinic.dto.request.PatientRequestDto;
 import com.gayatri.dentalclinic.dto.response.AuthResponseDto;
+import com.gayatri.dentalclinic.dto.response.DoctorRegistrationResponseDto;
 import com.gayatri.dentalclinic.dto.response.UserInfoDto;
+import com.gayatri.dentalclinic.entity.Dentist;
 import com.gayatri.dentalclinic.entity.Patient;
 import com.gayatri.dentalclinic.entity.UserAccount;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.mapper.PatientMapper;
 import com.gayatri.dentalclinic.repository.PatientRepository;
+import com.gayatri.dentalclinic.repository.DentistRepository;
 import com.gayatri.dentalclinic.repository.UserAccountRepository;
 import com.gayatri.dentalclinic.security.CustomUserDetails;
 import com.gayatri.dentalclinic.security.JwtUtil;
@@ -22,6 +26,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -35,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserAccountRepository userAccountRepository;
     private final PatientRepository patientRepository;
+    private final DentistRepository dentistRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final NotificationService notificationService;
@@ -78,6 +84,45 @@ public class AuthServiceImpl implements AuthService {
         return AuthResponseDto.builder()
                 .token(jwtUtil.generateToken(userDetails))
                 .user(toUserInfo(savedAccount))
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DoctorRegistrationResponseDto registerDoctor(DoctorRegistrationRequestDto requestDto) {
+        if (userAccountRepository.existsByEmail(requestDto.getEmail())
+                || dentistRepository.existsByEmail(requestDto.getEmail())) {
+            throw new BadRequestException("Email already exists");
+        }
+        if (dentistRepository.existsByPhone(requestDto.getPhone())) {
+            throw new BadRequestException("Phone number already exists");
+        }
+
+        Dentist dentist = Dentist.builder()
+                .name(requestDto.getFullName())
+                .email(requestDto.getEmail())
+                .phone(requestDto.getPhone())
+                .specialization(requestDto.getSpecialization())
+                .qualification(requestDto.getQualification())
+                .experienceYears(requestDto.getExperienceYears())
+                .consultationFees(requestDto.getConsultationFee())
+                .build();
+        Dentist savedDentist = dentistRepository.save(dentist);
+
+        UserAccount account = UserAccount.builder()
+                .email(requestDto.getEmail())
+                .passwordHash(passwordEncoder.encode(requestDto.getPassword()))
+                .role(Role.DOCTOR)
+                .dentist(savedDentist)
+                .build();
+        UserAccount savedAccount = userAccountRepository.save(account);
+
+        return DoctorRegistrationResponseDto.builder()
+                .message("Doctor account created successfully")
+                .userId(savedAccount.getId())
+                .doctorId(savedDentist.getId())
+                .email(savedAccount.getEmail())
+                .role(savedAccount.getRole())
                 .build();
     }
 

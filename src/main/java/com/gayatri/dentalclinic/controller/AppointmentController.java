@@ -2,6 +2,7 @@ package com.gayatri.dentalclinic.controller;
 
 import com.gayatri.dentalclinic.dto.request.AppointmentRequestDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
+import com.gayatri.dentalclinic.dto.response.AppointmentAvailabilityResponseDto;
 import com.gayatri.dentalclinic.service.AppointmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -45,6 +47,14 @@ public class AppointmentController {
             content = @Content(array = @ArraySchema(schema = @Schema(implementation = AppointmentResponseDto.class))))
     public List<AppointmentResponseDto> getAllAppointments() {
         return appointmentService.getAllAppointments();
+    }
+
+    @GetMapping("/availability")
+    @Operation(summary = "Get dentist slot availability", description = "Returns the available booking times for a dentist on a date.")
+    public AppointmentAvailabilityResponseDto getAvailability(
+            @RequestParam Long dentistId,
+            @RequestParam LocalDate appointmentDate) {
+        return appointmentService.getAvailability(dentistId, appointmentDate);
     }
 
     @GetMapping("/{id}")
