@@ -26,6 +26,7 @@ import com.gayatri.dentalclinic.repository.PaymentRepository;
 import com.gayatri.dentalclinic.repository.RazorpayCheckoutSessionRepository;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.NotificationService;
+import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.RazorpayPaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,12 +47,19 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
+
+    private static final List<LocalTime> BOOKING_SLOTS = List.of(
+            LocalTime.of(10, 30), LocalTime.of(11, 0), LocalTime.of(14, 0),
+            LocalTime.of(14, 30), LocalTime.of(15, 30), LocalTime.of(16, 0),
+            LocalTime.of(16, 30), LocalTime.of(17, 0), LocalTime.of(17, 30),
+            LocalTime.of(18, 0));
 
     private final DentistRepository dentistRepository;
     private final PatientRepository patientRepository;
@@ -60,6 +68,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     private final PaymentRepository paymentRepository;
     private final RazorpayCheckoutSessionRepository checkoutSessionRepository;
     private final NotificationService notificationService;
+    private final BookingTime bookingTime;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
     @Value("${app.razorpay.key-id:}")
@@ -80,6 +89,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new NotFoundException("Patient not found with id: " + patientId));
         Dentist dentist = findDentist(requestDto.getDentistId());
+        ensureSlotIsAvailable(dentist.getId(), requestDto.getAppointmentDate(), requestDto.getAppointmentTime());
         BigDecimal fee = consultationFee(dentist);
 
         String receipt = buildReceipt(patient.getId(), dentist.getId(), requestDto.getAppointmentDate(), requestDto.getAppointmentTime());
@@ -186,6 +196,11 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
 
     private Dentist findDentist(Long dentistId) {
         return dentistRepository.findById(dentistId)
+                .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + dentistId));
+    }
+
+    private Dentist findLockedDentist(Long dentistId) {
+        return dentistRepository.findWithLockById(dentistId)
                 .orElseThrow(() -> new NotFoundException("Dentist not found with id: " + dentistId));
     }
 
@@ -415,6 +430,9 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             return AppointmentMapper.toDto(existingPayment.getBill().getAppointment());
         }
 
+        Dentist dentist = findLockedDentist(session.getDentist().getId());
+        ensureSlotIsAvailable(dentist.getId(), session.getAppointmentDate(), session.getAppointmentTime());
+
         Appointment appointment = Appointment.builder()
                 .patient(session.getPatient())
                 .dentist(session.getDentist())
@@ -464,5 +482,18 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
 
     private boolean safeEquals(String left, String right) {
         return (left == null ? "" : left).equals(right == null ? "" : right);
+    }
+
+    private void ensureSlotIsAvailable(Long dentistId, LocalDate date, LocalTime time) {
+        bookingTime.requireFuture(date, time);
+        if (!BOOKING_SLOTS.contains(time)) {
+            throw new BadRequestException("The selected appointment time is not an available booking slot.");
+        }
+        boolean alreadyBooked = appointmentRepository
+                .existsByDentistIdAndAppointmentDateAndAppointmentTimeAndStatusIn(
+                        dentistId, date, time, List.of(AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED));
+        if (alreadyBooked) {
+            throw new BadRequestException("This dentist is no longer available for the selected date and time slot.");
+        }
     }
 }

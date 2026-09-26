@@ -2,16 +2,13 @@ package com.gayatri.dentalclinic.service.impl;
 
 import com.gayatri.dentalclinic.dto.request.PaymentRequestDto;
 import com.gayatri.dentalclinic.dto.response.PaymentResponseDto;
-import com.gayatri.dentalclinic.entity.Appointment;
 import com.gayatri.dentalclinic.entity.Bill;
 import com.gayatri.dentalclinic.entity.Payment;
-import com.gayatri.dentalclinic.enums.AppointmentStatus;
 import com.gayatri.dentalclinic.enums.PaymentStatus;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.exception.NotFoundException;
 import com.gayatri.dentalclinic.mapper.PaymentMapper;
-import com.gayatri.dentalclinic.repository.AppointmentRepository;
 import com.gayatri.dentalclinic.repository.BillRepository;
 import com.gayatri.dentalclinic.repository.PaymentRepository;
 import com.gayatri.dentalclinic.security.SecurityUtils;
@@ -28,7 +25,6 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final BillRepository billRepository;
-    private final AppointmentRepository appointmentRepository;
 
     @Override
     public PaymentResponseDto createPayment(PaymentRequestDto requestDto) {
@@ -44,7 +40,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         Payment payment = PaymentMapper.toEntity(requestDto, bill);
         Payment savedPayment = paymentRepository.save(payment);
-        markAppointmentCompletedIfPaid(savedPayment);
         return PaymentMapper.toDto(savedPayment);
     }
 
@@ -85,7 +80,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         PaymentMapper.updateEntity(requestDto, payment, bill);
         Payment savedPayment = paymentRepository.save(payment);
-        markAppointmentCompletedIfPaid(savedPayment);
         return PaymentMapper.toDto(savedPayment);
     }
 
@@ -123,21 +117,6 @@ public class PaymentServiceImpl implements PaymentService {
             case FAILED, REFUNDED -> {
                 throw new BadRequestException("Cannot transition status from " + currentStatus);
             }
-        }
-    }
-
-    private void markAppointmentCompletedIfPaid(Payment payment) {
-        if (payment.getStatus() != PaymentStatus.SUCCESS) {
-            return;
-        }
-        Bill bill = payment.getBill();
-        if (bill == null || bill.getAppointment() == null) {
-            return;
-        }
-        Appointment appointment = bill.getAppointment();
-        if (appointment.getStatus() != AppointmentStatus.COMPLETED) {
-            appointment.setStatus(AppointmentStatus.COMPLETED);
-            appointmentRepository.save(appointment);
         }
     }
 

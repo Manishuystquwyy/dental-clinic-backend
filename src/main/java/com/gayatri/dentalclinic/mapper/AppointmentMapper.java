@@ -32,6 +32,8 @@ public class AppointmentMapper {
         return AppointmentResponseDto.builder()
                 .id(appointment.getId())
                 .patientId(appointment.getPatient().getId())
+                .patientName((appointment.getPatient().getFirstName() + " "
+                        + appointment.getPatient().getLastName()).trim())
                 .dentistId(appointment.getDentist().getId())
                 .appointmentDate(appointment.getAppointmentDate())
                 .appointmentTime(appointment.getAppointmentTime())
