@@ -37,6 +37,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
 
@@ -45,6 +46,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
@@ -69,6 +71,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     private final RazorpayCheckoutSessionRepository checkoutSessionRepository;
     private final NotificationService notificationService;
     private final BookingTime bookingTime;
+    private final RestClient razorpayRestClient;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
     @Value("${app.razorpay.key-id:}")
@@ -151,7 +154,8 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
                 session,
                 requestDto.getRazorpayPaymentId(),
                 requestDto.getRazorpaySignature(),
-                getText(paymentNode, "method")
+                getText(paymentNode, "method"),
+                paymentDate(paymentNode)
         );
     }
 
@@ -182,7 +186,8 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
                 session,
                 paymentId,
                 signature,
-                getText(paymentEntity, "method")
+                getText(paymentEntity, "method"),
+                paymentDate(paymentEntity)
         );
     }
 
@@ -218,10 +223,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
 
     private RestClient razorpayClient() {
         ensureGatewayConfigured();
-        return RestClient.builder()
-                .baseUrl("https://api.razorpay.com/v1")
-                .defaultHeaders(headers -> headers.setBasicAuth(razorpayKeyId, razorpayKeySecret))
-                .build();
+        return razorpayRestClient;
     }
 
     private void verifySignature(String orderId, String paymentId, String signature) {
@@ -251,19 +253,34 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     }
 
     private Map<?, ?> fetchPayment(String paymentId) {
-        try {
-            Map<?, ?> payment = razorpayClient().get()
-                    .uri("/payments/{id}", paymentId)
-                    .retrieve()
-                    .body(Map.class);
-            if (getText(payment, "id").isBlank()) {
-                throw new BadRequestException("Unable to verify Razorpay payment.");
+        // Only retry a read. Retrying order creation could create another checkout.
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                return fetchPaymentOnce(paymentId);
+            } catch (ResourceAccessException ex) {
+                if (attempt == 0) {
+                    log.warn("Razorpay payment lookup connection failed; retrying once");
+                    continue;
+                }
+                log.error("Failed to fetch Razorpay payment {}", paymentId, ex);
+            } catch (RestClientException ex) {
+                log.error("Failed to fetch Razorpay payment {}", paymentId, ex);
+                break;
             }
-            return payment;
-        } catch (RestClientException ex) {
-            log.error("Failed to fetch Razorpay payment {}", paymentId, ex);
+        }
+        throw new BadRequestException("Payment verification is temporarily unavailable. "
+                + "If money was deducted, do not pay again. Please contact the clinic with your payment ID.");
+    }
+
+    private Map<?, ?> fetchPaymentOnce(String paymentId) {
+        Map<?, ?> payment = razorpayClient().get()
+                .uri("/payments/{id}", paymentId)
+                .retrieve()
+                .body(Map.class);
+        if (getText(payment, "id").isBlank()) {
             throw new BadRequestException("Unable to verify Razorpay payment.");
         }
+        return payment;
     }
 
     private void validateVerifiedPayment(Map<?, ?> paymentNode, RazorpayVerificationRequestDto requestDto, BigDecimal fee) {
@@ -290,6 +307,14 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             case "netbanking" -> PaymentMode.NET_BANKING;
             default -> PaymentMode.CASH;
         };
+    }
+
+    private LocalDate paymentDate(Map<?, ?> payment) {
+        long createdAt = getLong(payment, "created_at");
+        if (createdAt <= 0) {
+            throw new BadRequestException("Razorpay payment timestamp is missing or invalid.");
+        }
+        return bookingTime.dateAt(Instant.ofEpochSecond(createdAt));
     }
 
     private void ensureGatewayConfigured() {
@@ -362,6 +387,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             BigDecimal fee,
             String orderId
     ) {
+        LocalDateTime now = bookingTime.now();
         RazorpayCheckoutSession session = RazorpayCheckoutSession.builder()
                 .patient(patient)
                 .dentist(dentist)
@@ -371,8 +397,8 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
                 .amount(fee)
                 .razorpayOrderId(orderId)
                 .status(RazorpayCheckoutStatus.CREATED)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
         checkoutSessionRepository.save(session);
     }
@@ -410,7 +436,8 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             RazorpayCheckoutSession session,
             String paymentId,
             String signature,
-            String method
+            String method,
+            LocalDate paymentDate
     ) {
         if (session.getConfirmedAppointment() != null) {
             if (session.getRazorpayPaymentId() != null && !session.getRazorpayPaymentId().equals(paymentId)) {
@@ -425,7 +452,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             session.setConfirmedAppointment(existingPayment.getBill().getAppointment());
             session.setRazorpayPaymentId(paymentId);
             session.setStatus(RazorpayCheckoutStatus.PAID);
-            session.setUpdatedAt(LocalDateTime.now());
+            session.setUpdatedAt(bookingTime.now());
             checkoutSessionRepository.save(session);
             return AppointmentMapper.toDto(existingPayment.getBill().getAppointment());
         }
@@ -443,7 +470,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
                 .build();
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = bookingTime.now().toLocalDate();
         Bill bill = Bill.builder()
                 .appointment(savedAppointment)
                 .totalAmount(session.getAmount())
@@ -457,7 +484,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
                 .bill(savedBill)
                 .paymentMode(mapPaymentMode(method))
                 .amount(session.getAmount())
-                .paymentDate(today)
+                .paymentDate(paymentDate)
                 .status(PaymentStatus.SUCCESS)
                 .gatewayOrderId(session.getRazorpayOrderId())
                 .gatewayPaymentId(paymentId)
@@ -468,7 +495,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
         session.setRazorpayPaymentId(paymentId);
         session.setStatus(RazorpayCheckoutStatus.PAID);
         session.setConfirmedAppointment(savedAppointment);
-        session.setUpdatedAt(LocalDateTime.now());
+        session.setUpdatedAt(bookingTime.now());
         checkoutSessionRepository.save(session);
 
         try {
