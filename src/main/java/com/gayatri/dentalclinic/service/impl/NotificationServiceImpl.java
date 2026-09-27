@@ -7,6 +7,10 @@ import com.gayatri.dentalclinic.entity.PublicRequest;
 import com.gayatri.dentalclinic.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -16,16 +20,19 @@ import org.springframework.stereotype.Service;
 public class NotificationServiceImpl implements NotificationService {
 
     private final JavaMailSender mailSender;
+    private final TaskExecutor appointmentMailExecutor;
 
     private final String fromEmail;
     private final String frontendBaseUrl;
     private final String contactRecipientEmail;
 
     public NotificationServiceImpl(JavaMailSender mailSender,
+            @Qualifier("appointmentMailExecutor") TaskExecutor appointmentMailExecutor,
             @Value("${spring.mail.username:}") String fromEmail,
             @Value("${app.frontend.base-url:}") String frontendBaseUrl,
             @Value("${app.contact.recipient-email:}") String contactRecipientEmail) {
         this.mailSender = mailSender;
+        this.appointmentMailExecutor = appointmentMailExecutor;
         this.fromEmail = fromEmail;
         this.frontendBaseUrl = frontendBaseUrl;
         this.contactRecipientEmail = contactRecipientEmail;
@@ -33,8 +40,36 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void sendAppointmentConfirmation(Patient patient, Dentist dentist, Appointment appointment) {
+        // Snapshot scalar values while entities are managed. The worker must never access JPA.
+        String recipient = patient.getEmail();
         String message = buildMessage(patient, dentist, appointment);
-        sendEmail(patient.getEmail(), "Appointment Confirmation", message);
+        Long appointmentId = appointment.getId();
+        Runnable dispatch = () -> enqueueAppointmentEmail(appointmentId, recipient, message);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatch.run();
+                }
+            });
+        } else {
+            dispatch.run();
+        }
+    }
+
+    private void enqueueAppointmentEmail(Long appointmentId, String recipient, String message) {
+        try {
+            appointmentMailExecutor.execute(() -> {
+                try {
+                    sendEmail(recipient, "Appointment Confirmation", message);
+                } catch (Exception ex) {
+                    log.warn("Confirmation email failed for appointment {}", appointmentId, ex);
+                }
+            });
+        } catch (RuntimeException ex) {
+            // Never run SMTP on the caller or make a committed booking appear to fail.
+            log.warn("Confirmation email could not be queued for appointment {}", appointmentId, ex);
+        }
     }
 
     @Override
