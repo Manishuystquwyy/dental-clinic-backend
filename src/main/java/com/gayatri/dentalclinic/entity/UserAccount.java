@@ -35,6 +35,9 @@ public class UserAccount {
     @JoinColumn(name = "dentist_id", unique = true)
     private Dentist dentist;
 
+    @Column(unique = true, length = 255)
+    private String googleSubject;
+
     private String resetTokenHash;
 
     private java.time.LocalDateTime resetTokenExpiry;

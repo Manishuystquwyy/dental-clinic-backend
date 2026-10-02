@@ -10,6 +10,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
     // Login builds patient details after this repository transaction has completed.
     @EntityGraph(attributePaths = "patient")
     Optional<UserAccount> findByEmail(String email);
+    @EntityGraph(attributePaths = "patient")
+    Optional<UserAccount> findByGoogleSubject(String googleSubject);
     boolean existsByEmail(String email);
     Optional<UserAccount> findByResetTokenHash(String resetTokenHash);
 }
