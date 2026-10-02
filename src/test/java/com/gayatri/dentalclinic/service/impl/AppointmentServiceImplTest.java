@@ -1,43 +1,53 @@
 package com.gayatri.dentalclinic.service.impl;
 
-import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
 import com.gayatri.dentalclinic.dto.request.AppointmentRequestDto;
-import com.gayatri.dentalclinic.exception.BadRequestException;
-import com.gayatri.dentalclinic.service.BookingTime;
+import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
 import com.gayatri.dentalclinic.entity.Appointment;
 import com.gayatri.dentalclinic.entity.Dentist;
 import com.gayatri.dentalclinic.entity.Patient;
 import com.gayatri.dentalclinic.entity.UserAccount;
 import com.gayatri.dentalclinic.enums.AppointmentStatus;
 import com.gayatri.dentalclinic.enums.Role;
+import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.repository.AppointmentRepository;
 import com.gayatri.dentalclinic.repository.DentistRepository;
+import com.gayatri.dentalclinic.repository.MedicalRecordRepository;
 import com.gayatri.dentalclinic.repository.PatientRepository;
 import com.gayatri.dentalclinic.repository.UserAccountRepository;
-import com.gayatri.dentalclinic.repository.MedicalRecordRepository;
 import com.gayatri.dentalclinic.security.CustomUserDetails;
+import com.gayatri.dentalclinic.service.AppointmentService;
+import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.NotificationService;
+import java.sql.Connection;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.util.List;
-import java.util.Optional;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -72,8 +82,9 @@ class AppointmentServiceImplTest {
         SecurityContextHolder.clearContext();
     }
 
-    @Test
-    void getCurrentDoctorAppointmentsReturnsOnlyTheAuthenticatedDoctorsAppointments() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void doctorListingsUseReadOnlyTransactionsAndReturnOnlyTheAuthenticatedDoctorsAppointments(boolean generalListing) throws Exception {
         Dentist currentDentist = Dentist.builder().id(10L).name("Dr. Riya Kapoor").build();
         UserAccount account = UserAccount.builder()
                 .id(7L)
@@ -99,15 +110,31 @@ class AppointmentServiceImplTest {
 
         authenticateAsDoctor(7L);
         when(userAccountRepository.findById(7L)).thenReturn(Optional.of(account));
+        DataSource dataSource = mock(DataSource.class);
+        when(dataSource.getConnection()).thenReturn(mock(Connection.class));
+        var interceptor = new TransactionInterceptor();
+        interceptor.setTransactionManager(new DataSourceTransactionManager(dataSource));
+        interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        var factory = new ProxyFactory(service);
+        factory.addAdvice(interceptor);
+        var proxy = (AppointmentService) factory.getProxy();
         when(appointmentRepository.findByDentistIdOrderByAppointmentDateAscAppointmentTimeAsc(10L))
-                .thenReturn(List.of(appointment));
+                .thenAnswer(call -> {
+                    assertTrue(
+                            TransactionSynchronizationManager.isActualTransactionActive());
+                    assertTrue(
+                            TransactionSynchronizationManager.isCurrentTransactionReadOnly());
+                    return List.of(appointment);
+                });
 
-        List<AppointmentResponseDto> result = service.getCurrentDoctorAppointments();
+        List<AppointmentResponseDto> result = generalListing
+                ? proxy.getAllAppointments() : proxy.getCurrentDoctorAppointments();
 
         assertEquals(1, result.size());
         assertEquals("Ava Sharma", result.getFirst().getPatientName());
         assertEquals(10L, result.getFirst().getDentistId());
         verify(appointmentRepository).findByDentistIdOrderByAppointmentDateAscAppointmentTimeAsc(10L);
+        verify(appointmentRepository, never()).findAll();
     }
 
     @Test
