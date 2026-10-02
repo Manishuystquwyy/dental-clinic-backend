@@ -3,6 +3,7 @@ package com.gayatri.dentalclinic.controller;
 import com.gayatri.dentalclinic.entity.UserAccount;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.repository.UserAccountRepository;
+import com.gayatri.dentalclinic.repository.DentistRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,6 +54,9 @@ class AdminDoctorControllerSecurityTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private DentistRepository dentistRepository;
+
     @Test
     void registerDoctorRejectsNonAdminUsers() throws Exception {
         mockMvc.perform(post("/api/admin/doctors/register")
@@ -75,7 +79,7 @@ class AdminDoctorControllerSecurityTest {
         UserAccount account = userAccountRepository.findByEmail("riya.kapoor@example.com").orElseThrow();
         assertEquals(Role.DOCTOR, account.getRole());
         assertNotNull(account.getDentist());
-        assertEquals("Orthodontist", account.getDentist().getSpecialization());
+        assertEquals("Orthodontist", dentistRepository.findById(account.getDentist().getId()).orElseThrow().getSpecialization());
         assertNotEquals("StrongPass@123", account.getPasswordHash());
         assertTrue(passwordEncoder.matches("StrongPass@123", account.getPasswordHash()));
     }

@@ -18,16 +18,18 @@ public class AdminBootstrap implements CommandLineRunner {
     private final UserAccountRepository userAccountRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public AdminBootstrap(UserAccountRepository userAccountRepository, PasswordEncoder passwordEncoder) {
+    private final String adminEmail;
+    private final String adminPassword;
+
+    public AdminBootstrap(UserAccountRepository userAccountRepository,
+            PasswordEncoder passwordEncoder,
+            @Value("${app.admin.email:}") String adminEmail,
+            @Value("${app.admin.password:}") String adminPassword) {
         this.userAccountRepository = userAccountRepository;
         this.passwordEncoder = passwordEncoder;
+        this.adminEmail = adminEmail;
+        this.adminPassword = adminPassword;
     }
-
-    @Value("${app.admin.email:}")
-    private String adminEmail;
-
-    @Value("${app.admin.password:}")
-    private String adminPassword;
 
     @Override
     public void run(String... args) {

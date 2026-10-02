@@ -1,0 +1,19 @@
+[Unit]
+Description=Dental Clinic Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dental-clinic
+Group=dental-clinic
+WorkingDirectory=/opt/dental-clinic
+EnvironmentFile=/etc/dental-clinic/backend.env
+ExecStart=/usr/bin/java -jar /opt/dental-clinic/backend.jar
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

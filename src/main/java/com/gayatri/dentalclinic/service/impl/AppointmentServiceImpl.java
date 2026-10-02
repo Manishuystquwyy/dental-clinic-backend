@@ -88,8 +88,9 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<AppointmentResponseDto> getAllAppointments() {
-        if (SecurityUtils.getCurrentRole() == Role.DOCTOR) return getCurrentDoctorAppointments();
+        if (SecurityUtils.getCurrentRole() == Role.DOCTOR) return loadCurrentDoctorAppointments();
         List<Appointment> appointments;
         Long patientId = SecurityUtils.getCurrentPatientId();
         if (SecurityUtils.getCurrentRole() == Role.PATIENT) {
@@ -107,6 +108,10 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional(readOnly = true)
     public List<AppointmentResponseDto> getCurrentDoctorAppointments() {
+        return loadCurrentDoctorAppointments();
+    }
+
+    private List<AppointmentResponseDto> loadCurrentDoctorAppointments() {
         CustomUserDetails currentUser = SecurityUtils.getCurrentUser();
         if (currentUser == null || currentUser.getRole() != Role.DOCTOR) {
             throw new AccessDeniedException("Only doctors can access their appointments.");
@@ -127,6 +132,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AppointmentResponseDto getAppointmentById(Long id) {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));

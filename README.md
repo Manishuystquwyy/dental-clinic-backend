@@ -21,4 +21,8 @@ Deployment helpers are in `deploy/`:
 
 - `deploy/dental-clinic-backend.service`
 - `deploy/dental-clinic-backend.env.example`
-- `deploy/deploy-to-ubuntu.sh`
+- [Booking latency, pool sizing and server resource guide](docs/booking-capacity.md)
+
+## Google sign-in
+
+See [Google sign-in setup](docs/google-login.md) for Google Cloud origins, environment variables, schema migration, and account-linking behavior.

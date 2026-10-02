@@ -3,7 +3,6 @@ package com.gayatri.dentalclinic.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -11,7 +10,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
 public class AuthLoginRequestDto {
 
     @Schema(description = "Account email", example = "ava.sharma@example.com")
@@ -22,4 +20,12 @@ public class AuthLoginRequestDto {
     @Schema(description = "Account password", example = "StrongPass@123")
     @NotBlank(message = "Password is required")
     private String password;
+    public AuthLoginRequestDto(String email, String password) {
+        setEmail(email);
+        this.password = password;
+    }
+
+    public void setEmail(String value) {
+        email = value == null ? null : value.trim().toLowerCase(java.util.Locale.ROOT);
+    }
 }
