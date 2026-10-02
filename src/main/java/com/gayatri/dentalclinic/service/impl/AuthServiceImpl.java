@@ -12,6 +12,7 @@ import com.gayatri.dentalclinic.entity.Patient;
 import com.gayatri.dentalclinic.entity.UserAccount;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.BadRequestException;
+import com.gayatri.dentalclinic.exception.SignupValidationException;
 import com.gayatri.dentalclinic.mapper.PatientMapper;
 import com.gayatri.dentalclinic.repository.PatientRepository;
 import com.gayatri.dentalclinic.repository.DentistRepository;
@@ -46,15 +47,16 @@ public class AuthServiceImpl implements AuthService {
     private final LoginFraudDetectionService loginFraudDetectionService;
 
     @Override
+    @Transactional
     public AuthResponseDto registerPatient(AuthRegisterRequestDto requestDto) {
         if (userAccountRepository.existsByEmail(requestDto.getEmail())) {
-            throw new BadRequestException("Email already exists");
+            throw new SignupValidationException("email", "Email already exists");
         }
         if (patientRepository.existsByPhone(requestDto.getPhone())) {
-            throw new BadRequestException("Phone number already exists");
+            throw new SignupValidationException("phone", "Phone number already exists");
         }
         if (patientRepository.existsByEmail(requestDto.getEmail())) {
-            throw new BadRequestException("Email already exists");
+            throw new SignupValidationException("email", "Email already exists");
         }
 
         PatientRequestDto patientRequest = new PatientRequestDto(
