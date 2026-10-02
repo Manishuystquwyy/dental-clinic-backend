@@ -16,10 +16,12 @@ import com.gayatri.dentalclinic.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
@@ -27,6 +29,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final BillRepository billRepository;
 
     @Override
+    @Transactional
     public PaymentResponseDto createPayment(PaymentRequestDto requestDto) {
         denyIfPatient();
         Bill bill = billRepository.findById(requestDto.getBillId())
@@ -67,6 +70,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
     public PaymentResponseDto updatePayment(Long id, PaymentRequestDto requestDto) {
         denyIfPatient();
         Payment payment = paymentRepository.findById(id)
@@ -84,6 +88,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
     public void deletePayment(Long id) {
         denyIfPatient();
         Payment payment = paymentRepository.findById(id)

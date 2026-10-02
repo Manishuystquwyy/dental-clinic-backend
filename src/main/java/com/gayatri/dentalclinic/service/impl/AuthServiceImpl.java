@@ -12,6 +12,7 @@ import com.gayatri.dentalclinic.entity.Patient;
 import com.gayatri.dentalclinic.entity.UserAccount;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.BadRequestException;
+import com.gayatri.dentalclinic.exception.SignupValidationException;
 import com.gayatri.dentalclinic.mapper.PatientMapper;
 import com.gayatri.dentalclinic.repository.PatientRepository;
 import com.gayatri.dentalclinic.repository.DentistRepository;
@@ -22,7 +23,6 @@ import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AuthService;
 import com.gayatri.dentalclinic.service.LoginFraudDetectionService;
 import com.gayatri.dentalclinic.service.NotificationService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -47,15 +47,16 @@ public class AuthServiceImpl implements AuthService {
     private final LoginFraudDetectionService loginFraudDetectionService;
 
     @Override
+    @Transactional
     public AuthResponseDto registerPatient(AuthRegisterRequestDto requestDto) {
         if (userAccountRepository.existsByEmail(requestDto.getEmail())) {
-            throw new BadRequestException("Email already exists");
+            throw new SignupValidationException("email", "Email already exists");
         }
         if (patientRepository.existsByPhone(requestDto.getPhone())) {
-            throw new BadRequestException("Phone number already exists");
+            throw new SignupValidationException("phone", "Phone number already exists");
         }
         if (patientRepository.existsByEmail(requestDto.getEmail())) {
-            throw new BadRequestException("Email already exists");
+            throw new SignupValidationException("email", "Email already exists");
         }
 
         PatientRequestDto patientRequest = new PatientRequestDto(
@@ -127,21 +128,21 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public AuthResponseDto login(AuthLoginRequestDto requestDto, HttpServletRequest request) {
-        loginFraudDetectionService.checkLoginAllowed(requestDto.getEmail(), request);
+    public AuthResponseDto login(AuthLoginRequestDto requestDto, String ipAddress) {
+        loginFraudDetectionService.checkLoginAllowed(requestDto.getEmail(), ipAddress);
 
         UserAccount account = userAccountRepository.findByEmail(requestDto.getEmail()).orElse(null);
         if (account == null) {
-            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), request, null);
+            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), ipAddress, null);
             throw new BadRequestException("Invalid email or password");
         }
 
         if (!passwordEncoder.matches(requestDto.getPassword(), account.getPasswordHash())) {
-            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), request, account);
+            loginFraudDetectionService.recordFailedLogin(requestDto.getEmail(), ipAddress, account);
             throw new BadRequestException("Invalid email or password");
         }
 
-        loginFraudDetectionService.recordSuccessfulLogin(requestDto.getEmail(), request);
+        loginFraudDetectionService.recordSuccessfulLogin(requestDto.getEmail(), ipAddress);
         CustomUserDetails userDetails = CustomUserDetails.fromUserAccount(account);
         return AuthResponseDto.builder()
                 .token(jwtUtil.generateToken(userDetails))
@@ -150,6 +151,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserInfoDto getCurrentUser() {
         CustomUserDetails current = SecurityUtils.getCurrentUser();
         if (current == null) {

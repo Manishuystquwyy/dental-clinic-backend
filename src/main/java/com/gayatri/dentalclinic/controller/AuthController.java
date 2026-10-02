@@ -36,7 +36,21 @@ public class AuthController {
     @Operation(summary = "Login with email and password")
     @ApiResponse(responseCode = "200", description = "Logged in")
     public AuthResponseDto login(@Valid @RequestBody AuthLoginRequestDto requestDto, HttpServletRequest request) {
-        return authService.login(requestDto, request);
+        return authService.login(requestDto, resolveClientIp(request));
+    }
+
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        if (forwardedFor != null && !forwardedFor.isBlank()) {
+            return forwardedFor.split(",")[0].trim();
+        }
+
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp.trim();
+        }
+
+        return request.getRemoteAddr();
     }
 
     @GetMapping("/me")

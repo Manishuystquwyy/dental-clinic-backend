@@ -29,9 +29,18 @@ public class GlobalExceptionHandler {
 
         ex.getBindingResult().getFieldErrors()
                 .forEach(error ->
-                        errors.put(error.getField(), error.getDefaultMessage()));
+                        errors.put(switch (error.getField()) {
+                            case "passwordWithinByteLimit" -> "password";
+                            case "dateOfBirthWithinAgeLimit" -> "dateOfBirth";
+                            default -> error.getField();
+                        }, error.getDefaultMessage()));
 
         return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(SignupValidationException.class)
+    public ResponseEntity<Map<String, String>> handleSignupValidation(SignupValidationException ex) {
+        return ResponseEntity.badRequest().body(Map.of(ex.getField(), ex.getMessage()));
     }
 
     @ExceptionHandler(BadRequestException.class)
