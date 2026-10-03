@@ -2,6 +2,10 @@
 
 Spring Boot backend for Gayatri Dental Clinic.
 
+## Appointment confirmation emails
+
+See [the HTML email template and configuration guide](docs/appointment-confirmation-email.md) and [sample preview](docs/appointment-confirmation-preview.html).
+
 ## Prescriptions and patient documents
 
 Doctors can write prescriptions and upload private patient documents from their dashboard. Patients can view and download their history. See [the workflow, API and deployment guide](docs/medical-records.md).
