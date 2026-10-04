@@ -42,6 +42,62 @@ class AppointmentConfirmationEmailTemplateTest {
     }
 
     @Test
+    void rescheduleConfirmsTheNewScheduleAndLabelsTheReplacedAppointment() {
+        var email = template(FRONTEND_URL).renderRescheduled(patient("Manish", "Kumar"),
+                dentist("Dr. Puja Priya Kumari"), appointment(), LocalDate.of(2026, 10, 7), LocalTime.of(10, 30));
+
+        assertEquals("Appointment rescheduled | Gayatri Dental Clinic", email.subject());
+        for (String text : List.of(email.html(), email.plainText())) {
+            assertTrue(text.contains("Your appointment has been rescheduled."));
+            assertTrue(text.contains("Manish Kumar"));
+            assertTrue(text.contains("Dr. Puja Priya Kumari"));
+            assertTrue(text.contains("Thursday, 8 October 2026"));
+            assertTrue(text.contains("11:00 AM"));
+            assertTrue(text.contains("PREVIOUS APPOINTMENT (REPLACED)"));
+            assertTrue(text.contains("Wednesday, 7 October 2026"));
+            assertTrue(text.contains("10:30 AM"));
+            assertTrue(text.indexOf("Thursday, 8 October 2026") < text.indexOf("Wednesday, 7 October 2026"));
+            assertTrue(text.contains("GDC-42"));
+            assertTrue(text.contains("IST"));
+            assertTrue(text.contains(FRONTEND_URL + "/appointments"));
+            assertFalse(text.contains("{{"));
+            assertFalse(text.contains("null"));
+            assertFalse(text.contains("BOOKING CONFIRMED"));
+        }
+        assertTrue(email.html().contains("APPOINTMENT RESCHEDULED"));
+        assertTrue(email.html().contains("NEW APPOINTMENT DATE"));
+        assertTrue(email.html().contains("NEW TIME"));
+        assertTrue(email.plainText().contains("NEW APPOINTMENT DETAILS"));
+        assertTrue(email.html().contains("cid:gayatri-clinic-logo"));
+    }
+
+    @Test
+    void rescheduleEscapesNamesWithoutExpandingPatientTokensOrReplacingPatientCopy() {
+        String firstName = "<img src=x onerror=\"alert(1)\">";
+        String lastName = "{{HERO_TITLE}} BOOKING CONFIRMED";
+        var email = template(FRONTEND_URL).renderRescheduled(patient(firstName, lastName),
+                dentist("Puja & <strong>O'Neil</strong>"), appointment(), LocalDate.of(2026, 10, 7), LocalTime.of(10, 30));
+
+        assertFalse(email.html().contains(firstName));
+        assertTrue(email.html().contains("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"));
+        assertTrue(email.html().contains(lastName));
+        assertFalse(email.html().contains("<strong>O'Neil</strong>"));
+        assertTrue(email.plainText().contains(firstName + " " + lastName));
+        assertTrue(email.html().contains("APPOINTMENT RESCHEDULED"));
+    }
+
+    @Test
+    void initialConfirmationDoesNotIncludeReschedulingCopyOrAnOldSchedule() {
+        var email = template(FRONTEND_URL).render(patient("Manish", "Kumar"), dentist("Puja"), appointment());
+        assertEquals("Appointment confirmed | Gayatri Dental Clinic", email.subject());
+        for (String text : List.of(email.html(), email.plainText())) {
+            assertFalse(text.contains("RESCHEDULED"));
+            assertFalse(text.contains("PREVIOUS APPOINTMENT"));
+            assertFalse(text.contains("NEW APPOINTMENT"));
+        }
+    }
+
+    @Test
     void formattingUsesEnglishAndIndianTimeEvenWhenServerLocaleIsDifferent() {
         Locale original = Locale.getDefault();
         try {

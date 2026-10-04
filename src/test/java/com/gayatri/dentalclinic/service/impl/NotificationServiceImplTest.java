@@ -31,6 +31,8 @@ class NotificationServiceImplTest {
     private final Appointment appointment = new Appointment();
     private final AppointmentConfirmationEmailTemplate template = new AppointmentConfirmationEmailTemplate(
             "9876543210", "Clinic Road, Patna", "https://clinic.example.com");
+    private final LocalDate previousDate = LocalDate.of(2026, 10, 7);
+    private final LocalTime previousTime = LocalTime.of(10, 30);
     private NotificationServiceImpl service;
 
     @BeforeEach
@@ -92,15 +94,67 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void blankPatientEmailSkipsMessageCreation() {
+    void rescheduleMailContainsOldAndNewVisitInBrandedUtf8Alternatives() throws Exception {
+        service.sendAppointmentRescheduled(patient, dentist, appointment, previousDate, previousTime);
+
+        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
+        verify(sender).send(captor.capture());
+        MimeMessage mail = captor.getValue();
+        mail.saveChanges();
+        var expected = template.renderRescheduled(patient, dentist, appointment, previousDate, previousTime);
+
+        assertEquals("clinic@example.com", ((InternetAddress) mail.getFrom()[0]).getAddress());
+        assertEquals("Gayatri Dental Clinic", ((InternetAddress) mail.getFrom()[0]).getPersonal());
+        assertEquals("patient@example.com", ((InternetAddress) mail.getAllRecipients()[0]).getAddress());
+        assertEquals(expected.subject(), mail.getSubject());
+        assertTrue(mail.getSubject().toLowerCase(java.util.Locale.ENGLISH).contains("rescheduled"));
+        assertTrue(mail.isMimeType("multipart/related"));
+
+        Multipart related = (Multipart) mail.getContent();
+        assertEquals(2, related.getCount());
+        assertTrue(related.getBodyPart(0).isMimeType("multipart/alternative"));
+        Multipart alternatives = (Multipart) related.getBodyPart(0).getContent();
+        assertEquals(2, alternatives.getCount());
+        BodyPart plain = alternatives.getBodyPart(0);
+        BodyPart html = alternatives.getBodyPart(1);
+        assertTrue(plain.isMimeType("text/plain"));
+        assertTrue(html.isMimeType("text/html"));
+        assertTrue(plain.getContentType().toLowerCase().contains("charset=utf-8"));
+        assertTrue(html.getContentType().toLowerCase().contains("charset=utf-8"));
+        assertEquals(expected.plainText(), plain.getContent());
+        assertEquals(expected.html(), html.getContent());
+        for (String content : new String[] {(String) plain.getContent(), (String) html.getContent()}) {
+            assertTrue(content.contains("José Kumar"));
+            assertTrue(content.contains("Dr. Puja Priya Kumari"));
+            assertTrue(content.contains("Thursday, 8 October 2026"));
+            assertTrue(content.contains("11:00 AM"));
+            assertTrue(content.contains("Wednesday, 7 October 2026"));
+            assertTrue(content.contains("10:30 AM"));
+            assertTrue(content.contains("GDC-42"));
+        }
+        assertTrue(((String) html.getContent()).contains("cid:gayatri-clinic-logo"));
+        BodyPart logo = related.getBodyPart(1);
+        assertEquals(Part.INLINE, logo.getDisposition());
+        assertTrue(logo.isMimeType("image/jpeg"));
+        assertArrayEquals(new String[] {"<gayatri-clinic-logo>"}, logo.getHeader("Content-ID"));
+        verify(sender, never()).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    void blankPatientEmailSkipsConfirmationAndRescheduleMessageCreation() {
         patient.setEmail(" ");
         service.sendAppointmentConfirmation(patient, dentist, appointment);
+        service.sendAppointmentRescheduled(patient, dentist, appointment, previousDate, previousTime);
+        patient.setEmail(null);
+        service.sendAppointmentRescheduled(patient, dentist, appointment, previousDate, previousTime);
         verifyNoInteractions(sender);
     }
 
     @Test
-    void missingSenderConfigurationSkipsMessageCreation() {
+    void missingSenderConfigurationSkipsConfirmationAndRescheduleMessageCreation() {
         serviceWithFrom("").sendAppointmentConfirmation(patient, dentist, appointment);
+        serviceWithFrom("").sendAppointmentRescheduled(patient, dentist, appointment, previousDate, previousTime);
+        serviceWithFrom(null).sendAppointmentRescheduled(patient, dentist, appointment, previousDate, previousTime);
         verifyNoInteractions(sender);
     }
 

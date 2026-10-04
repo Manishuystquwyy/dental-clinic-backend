@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="x-apple-disable-message-reformatting" />
-  <title>Your appointment is confirmed | Gayatri Dental Clinic</title>
+  <title>{{TITLE}}</title>
   <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
@@ -23,7 +23,7 @@
   </style>
 </head>
 <body style="margin:0;padding:0;background-color:#efeee7;color:#203e3b;font-family:Arial,Helvetica,sans-serif;">
-  <div style="display:none;font-size:1px;line-height:1px;color:#efeee7;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your visit with {{DENTIST_NAME}} is confirmed for {{DATE}} at {{TIME}} IST.</div>
+  <div style="display:none;font-size:1px;line-height:1px;color:#efeee7;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">Your visit with {{DENTIST_NAME}} is {{CONFIRMATION_VERB}} for {{DATE}} at {{TIME}} IST.</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#efeee7">
     <tr>
       <td class="email-shell" align="center" style="padding:36px 16px;">
@@ -42,15 +42,15 @@
           </tr>
           <tr>
             <td class="email-content" bgcolor="#faf9f5" style="padding:34px 40px 32px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#e5eee8" style="padding:7px 12px;border-radius:4px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.5px;color:#214f49;">&#10003;&nbsp; BOOKING CONFIRMED</td></tr></table>
-              <h1 class="hero-title" style="margin:18px 0 12px;font:normal 38px/44px Georgia,'Times New Roman',serif;letter-spacing:-0.8px;color:#203e3b;">A healthier smile<br />starts with your visit.</h1>
-              <p style="margin:0;font:15px/24px Arial,Helvetica,sans-serif;color:#64716b;">Your appointment is confirmed.<br />We look forward to welcoming you.</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#e5eee8" style="padding:7px 12px;border-radius:4px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.5px;color:#214f49;">&#10003;&nbsp; {{STATUS_BADGE}}</td></tr></table>
+              <h1 class="hero-title" style="margin:18px 0 12px;font:normal 38px/44px Georgia,'Times New Roman',serif;letter-spacing:-0.8px;color:#203e3b;">{{HERO_TITLE}}</h1>
+              <p style="margin:0;font:15px/24px Arial,Helvetica,sans-serif;color:#64716b;">{{CONFIRMATION_MESSAGE}}<br />We look forward to welcoming you.</p>
             </td>
           </tr>
           <tr>
             <td class="email-content" style="padding:28px 40px 22px;">
               <p style="margin:0 0 10px;font:700 16px/25px Arial,Helvetica,sans-serif;color:#203e3b;overflow-wrap:anywhere;word-break:break-word;">Dear {{PATIENT_NAME}},</p>
-              <p style="margin:0;font:14px/23px Arial,Helvetica,sans-serif;color:#64716b;">Thank you for choosing Gayatri Dental Clinic.<br />Here are the details of your upcoming visit.</p>
+              <p style="margin:0;font:14px/23px Arial,Helvetica,sans-serif;color:#64716b;">{{INTRO_MESSAGE}}</p>
             </td>
           </tr>
           <tr>
@@ -61,11 +61,11 @@
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;">
                       <tr>
                         <td class="schedule-cell" width="64%" valign="top" style="width:64%;padding-right:16px;">
-                          <p style="margin:0 0 7px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.6px;color:#64716b;">APPOINTMENT DATE</p>
+                          <p style="margin:0 0 7px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.6px;color:#64716b;">{{DATE_LABEL}}</p>
                           <p style="margin:0;font:700 17px/25px Arial,Helvetica,sans-serif;color:#214f49;">{{DATE}}</p>
                         </td>
                         <td class="schedule-cell schedule-time" width="36%" valign="top" style="width:36%;border-left:1px solid #dce1d9;padding-left:20px;">
-                          <p style="margin:0 0 7px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.6px;color:#64716b;">TIME</p>
+                          <p style="margin:0 0 7px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.6px;color:#64716b;">{{TIME_LABEL}}</p>
                           <p style="margin:0;font:700 22px/27px Arial,Helvetica,sans-serif;color:#214f49;">{{TIME}}</p>
                           <p style="margin:3px 0 0;font:11px/17px Arial,Helvetica,sans-serif;color:#64716b;">India Standard Time (IST)</p>
                         </td>
@@ -79,6 +79,7 @@
                     <p style="margin:0;font:700 16px/25px Arial,Helvetica,sans-serif;color:#203e3b;overflow-wrap:anywhere;word-break:break-word;">{{DENTIST_NAME}}</p>
                   </td>
                 </tr>
+                {{PREVIOUS_SCHEDULE}}
                 <tr>
                   <td style="padding:0 24px 18px;">{{REFERENCE}}</td>
                 </tr>
@@ -117,7 +118,7 @@
           </tr>
         </table>
         <!--[if mso]></td></tr></table><![endif]-->
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;"><tr><td align="center" style="padding:18px 16px 0;"><p style="margin:0;font:11px/18px Arial,Helvetica,sans-serif;color:#64716b;">This is an automated appointment confirmation.<br />For assistance, please call the clinic.</p></td></tr></table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;"><tr><td align="center" style="padding:18px 16px 0;"><p style="margin:0;font:11px/18px Arial,Helvetica,sans-serif;color:#64716b;">{{AUTOMATED_NOTICE}}<br />For assistance, please call the clinic.</p></td></tr></table>
       </td>
     </tr>
   </table>

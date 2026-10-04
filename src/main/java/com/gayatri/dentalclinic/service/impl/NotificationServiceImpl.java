@@ -11,6 +11,8 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -55,6 +57,21 @@ public class NotificationServiceImpl implements NotificationService {
         String recipient = patient.getEmail();
         EmailContent message = appointmentEmailTemplate.render(patient, dentist, appointment);
         Long appointmentId = appointment.getId();
+        dispatchAppointmentEmail(appointmentId, recipient, message);
+    }
+
+    @Override
+    public void sendAppointmentRescheduled(Patient patient, Dentist dentist, Appointment appointment,
+                                          LocalDate previousDate, LocalTime previousTime) {
+        // Render before commit so asynchronous work only sees immutable scalar content.
+        String recipient = patient.getEmail();
+        EmailContent message = appointmentEmailTemplate.renderRescheduled(
+                patient, dentist, appointment, previousDate, previousTime);
+        Long appointmentId = appointment.getId();
+        dispatchAppointmentEmail(appointmentId, recipient, message);
+    }
+
+    private void dispatchAppointmentEmail(Long appointmentId, String recipient, EmailContent message) {
         Runnable dispatch = () -> enqueueAppointmentEmail(appointmentId, recipient, message);
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -74,12 +91,12 @@ public class NotificationServiceImpl implements NotificationService {
                 try {
                     sendAppointmentEmail(recipient, message);
                 } catch (Exception ex) {
-                    log.warn("Confirmation email failed for appointment {}", appointmentId, ex);
+                    log.warn("Appointment email failed for appointment {}", appointmentId, ex);
                 }
             });
         } catch (RuntimeException ex) {
             // Never run SMTP on the caller or make a committed booking appear to fail.
-            log.warn("Confirmation email could not be queued for appointment {}", appointmentId, ex);
+            log.warn("Appointment email could not be queued for appointment {}", appointmentId, ex);
         }
     }
 

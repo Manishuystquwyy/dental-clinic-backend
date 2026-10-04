@@ -48,10 +48,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class AppointmentServiceImplTest {
@@ -62,6 +65,7 @@ class AppointmentServiceImplTest {
     private PatientRepository patientRepository;
     private DentistRepository dentistRepository;
     private AppointmentPolicy appointmentPolicy;
+    private NotificationService notificationService;
 
     @BeforeEach
     void setUp() {
@@ -69,6 +73,7 @@ class AppointmentServiceImplTest {
         patientRepository = mock(PatientRepository.class);
         dentistRepository = mock(DentistRepository.class);
         userAccountRepository = mock(UserAccountRepository.class);
+        notificationService = mock(NotificationService.class);
         appointmentPolicy = new AppointmentPolicy(12, 12);
         useClock("2026-09-24T08:30:00Z");
     }
@@ -79,7 +84,7 @@ class AppointmentServiceImplTest {
                 patientRepository,
                 dentistRepository,
                 userAccountRepository,
-                mock(NotificationService.class),
+                notificationService,
                 mock(MedicalRecordRepository.class),
                 new BookingTime(Clock.fixed(Instant.parse(instant), ZoneOffset.UTC)),
                 appointmentPolicy
@@ -202,6 +207,8 @@ class AppointmentServiceImplTest {
         var result = service.createAppointment(request(LocalDate.of(2026, 9, 24),
                 LocalTime.of(14, 30), AppointmentStatus.BOOKED));
         assertEquals(LocalTime.of(14, 30), result.getAppointmentTime());
+        verify(notificationService).sendAppointmentConfirmation(any(), any(), any());
+        verifyNoMoreInteractions(notificationService);
     }
 
     @Test
@@ -239,6 +246,109 @@ class AppointmentServiceImplTest {
         verify(appointmentRepository).save(appointment);
     }
 
+    @ParameterizedTest
+    @CsvSource({"2026-09-26, 10:30", "2026-09-25, 11:00", "2026-09-26, 11:00"})
+    void successfulBookedDateOrTimeChangeNotifiesOnceWithPreviousAndNewSchedule(
+            LocalDate targetDate, LocalTime targetTime) {
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        var request = request(targetDate, targetTime, AppointmentStatus.BOOKED);
+        request.setRemarks(appointment.getRemarks());
+
+        var result = service.updateAppointment(25L, request);
+
+        assertEquals(targetDate, result.getAppointmentDate());
+        assertEquals(targetTime, result.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, result.getStatus());
+        var order = inOrder(appointmentRepository, notificationService);
+        order.verify(appointmentRepository).save(appointment);
+        order.verify(notificationService).sendAppointmentRescheduled(
+                appointment.getPatient(), appointment.getDentist(), appointment,
+                LocalDate.of(2026, 9, 25), LocalTime.of(10, 30));
+        verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void rescheduleNotificationPreparationFailureDoesNotFailTheSavedUpdate() {
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        doThrow(new IllegalStateException("Unable to render email"))
+                .when(notificationService).sendAppointmentRescheduled(any(), any(), any(), any(), any());
+
+        var result = service.updateAppointment(25L,
+                request(LocalDate.of(2026, 9, 26), LocalTime.of(11, 0), AppointmentStatus.BOOKED));
+
+        assertEquals(LocalDate.of(2026, 9, 26), result.getAppointmentDate());
+        assertEquals(LocalTime.of(11, 0), result.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, result.getStatus());
+        verify(appointmentRepository).save(appointment);
+        verify(notificationService).sendAppointmentRescheduled(
+                appointment.getPatient(), appointment.getDentist(), appointment,
+                LocalDate.of(2026, 9, 25), LocalTime.of(10, 30));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"BOOKED, Follow-up consultation", "BOOKED, Updated remarks", "CANCELLED, Follow-up consultation"})
+    void unchangedScheduleAndCancellationDoNotSendRescheduleEmails(AppointmentStatus status, String remarks) {
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        var request = request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), status);
+        request.setRemarks(remarks);
+
+        var result = service.updateAppointment(25L, request);
+
+        assertEquals(status, result.getStatus());
+        assertEquals(remarks, result.getRemarks());
+        verify(appointmentRepository).save(appointment);
+        verifyNoInteractions(notificationService);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4, 10", "3, 11", "4, 11"})
+    void ownerOrDentistChangesWithoutAScheduleChangeDoNotSendRescheduleEmails(Long patientId, Long dentistId) {
+        authenticate(Role.ADMIN, null);
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(patientRepository.findById(patientId)).thenReturn(Optional.of(Patient.builder().id(patientId).build()));
+        when(dentistRepository.findWithLockById(dentistId)).thenReturn(Optional.of(Dentist.builder().id(dentistId).build()));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        var request = new AppointmentRequestDto(patientId, dentistId, appointment.getAppointmentDate(),
+                appointment.getAppointmentTime(), AppointmentStatus.BOOKED, appointment.getRemarks());
+
+        var result = service.updateAppointment(25L, request);
+
+        assertEquals(patientId, result.getPatientId());
+        assertEquals(dentistId, result.getDentistId());
+        assertEquals(LocalDate.of(2026, 9, 25), result.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), result.getAppointmentTime());
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void cancellingWithAChangedScheduleDoesNotSendARescheduleEmail() {
+        authenticate(Role.ADMIN, null);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        var result = service.updateAppointment(25L,
+                request(LocalDate.of(2026, 9, 26), LocalTime.of(11, 0), AppointmentStatus.CANCELLED));
+
+        assertEquals(AppointmentStatus.CANCELLED, result.getStatus());
+        assertEquals(LocalDate.of(2026, 9, 26), result.getAppointmentDate());
+        verifyNoInteractions(notificationService);
+    }
+
     @Test
     void occupiedRescheduleSlotLeavesTheOriginalAppointmentUnchanged() {
         authenticate(Role.PATIENT, 3L);
@@ -265,6 +375,7 @@ class AppointmentServiceImplTest {
         assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
         assertEquals("Follow-up consultation", appointment.getRemarks());
         verify(appointmentRepository, never()).save(any());
+        verifyNoInteractions(notificationService);
     }
 
     @Test
@@ -281,6 +392,7 @@ class AppointmentServiceImplTest {
         assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
         verify(appointmentRepository, never()).save(any());
         verifyNoInteractions(patientRepository, dentistRepository);
+        verifyNoInteractions(notificationService);
     }
 
     @ParameterizedTest
@@ -375,6 +487,7 @@ class AppointmentServiceImplTest {
         }
         verify(appointmentRepository, never()).save(any());
         verify(appointmentRepository, never()).delete(any());
+        verifyNoInteractions(notificationService);
     }
 
     @ParameterizedTest
@@ -575,6 +688,7 @@ class AppointmentServiceImplTest {
 
         assertEquals(AppointmentStatus.COMPLETED, result.getStatus());
         verify(appointmentRepository).save(appointment);
+        verifyNoInteractions(notificationService);
     }
 
     @Test

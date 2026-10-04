@@ -8,6 +8,8 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Locale;
@@ -46,6 +48,16 @@ public class AppointmentConfirmationEmailTemplate {
     }
 
     public EmailContent render(Patient patient, Dentist dentist, Appointment appointment) {
+        return render(patient, dentist, appointment, null, null, false);
+    }
+
+    public EmailContent renderRescheduled(Patient patient, Dentist dentist, Appointment appointment,
+                                         LocalDate previousDate, LocalTime previousTime) {
+        return render(patient, dentist, appointment, previousDate, previousTime, true);
+    }
+
+    private EmailContent render(Patient patient, Dentist dentist, Appointment appointment,
+                                LocalDate previousDate, LocalTime previousTime, boolean rescheduled) {
         String patientName = valueOr(joinNames(patient.getFirstName(), patient.getLastName()), "Patient");
         String dentistName = doctorName(dentist.getName());
         String date = appointment.getAppointmentDate() == null ? "Please contact the clinic"
@@ -56,8 +68,37 @@ public class AppointmentConfirmationEmailTemplate {
         String directionsUrl = "https://www.google.com/maps/search/?api=1&query="
                 + URLEncoder.encode("Gayatri Dental Clinic, " + clinicAddress, StandardCharsets.UTF_8);
         String phoneHref = "tel:" + clinicPhone.replaceAll("[^+0-9]", "");
+        String subject = rescheduled ? "Appointment rescheduled | Gayatri Dental Clinic"
+                : "Appointment confirmed | Gayatri Dental Clinic";
+        String confirmationMessage = rescheduled ? "Your appointment has been rescheduled."
+                : "Your appointment is confirmed.";
+        String introduction = rescheduled
+                ? "Your appointment has been successfully rescheduled. Please use the updated date and time below."
+                : "Thank you for choosing Gayatri Dental Clinic. We look forward to welcoming you.";
+        boolean hasPreviousSchedule = rescheduled && previousDate != null && previousTime != null;
 
         Map<String, String> values = new HashMap<>();
+        values.put("TITLE", escapeHtml(rescheduled ? "Your appointment has been rescheduled | Gayatri Dental Clinic"
+                : "Your appointment is confirmed | Gayatri Dental Clinic"));
+        values.put("CONFIRMATION_VERB", rescheduled ? "rescheduled" : "confirmed");
+        values.put("CONFIRMATION_MESSAGE", escapeHtml(confirmationMessage));
+        values.put("STATUS_BADGE", rescheduled ? "APPOINTMENT RESCHEDULED" : "BOOKING CONFIRMED");
+        // These fragments contain only controlled copy; patient and schedule values are escaped separately.
+        values.put("HERO_TITLE", rescheduled ? "Your visit,<br />at a new time."
+                : "A healthier smile<br />starts with your visit.");
+        values.put("INTRO_MESSAGE", rescheduled
+                ? "Your appointment has been successfully rescheduled.<br />Please use the updated date and time below."
+                : "Thank you for choosing Gayatri Dental Clinic.<br />Here are the details of your upcoming visit.");
+        values.put("DATE_LABEL", rescheduled ? "NEW APPOINTMENT DATE" : "APPOINTMENT DATE");
+        values.put("TIME_LABEL", rescheduled ? "NEW TIME" : "TIME");
+        values.put("PREVIOUS_SCHEDULE", hasPreviousSchedule
+                ? "<tr><td style=\"padding:16px 24px;border-top:1px solid #dce1d9;background-color:#faf9f5;\">"
+                    + "<p style=\"margin:0 0 5px;font:700 10px/16px Arial,Helvetica,sans-serif;letter-spacing:1.2px;color:#64716b;\">PREVIOUS APPOINTMENT (REPLACED)</p>"
+                    + "<p style=\"margin:0;font:14px/23px Arial,Helvetica,sans-serif;color:#64716b;\">"
+                    + escapeHtml(DATE.format(previousDate)) + " at " + escapeHtml(TIME.format(previousTime))
+                    + " IST</p></td></tr>" : "");
+        values.put("AUTOMATED_NOTICE", rescheduled ? "This is an automated appointment rescheduling confirmation."
+                : "This is an automated appointment confirmation.");
         values.put("PATIENT_NAME", escapeHtml(patientName));
         values.put("DENTIST_NAME", escapeHtml(dentistName));
         values.put("DATE", escapeHtml(date));
@@ -90,17 +131,18 @@ public class AppointmentConfirmationEmailTemplate {
                 GAYATRI DENTAL CLINIC
                 Thoughtful care for your smile.
 
-                Your appointment is confirmed.
+                %s
 
                 Dear %s,
 
-                Thank you for choosing Gayatri Dental Clinic. We look forward to welcoming you.
+                %s
 
-                APPOINTMENT DETAILS
+                %s
                 Patient: %s
                 Dentist: %s
                 Date: %s
                 Time: %s (IST, India Standard Time)
+                %s
                 %s
                 CLINIC LOCATION
                 %s
@@ -115,13 +157,16 @@ public class AppointmentConfirmationEmailTemplate {
                 Warm regards,
                 The Gayatri Dental Clinic team
 
-                This is an automated appointment confirmation. For assistance, please call the clinic.
-                """.formatted(patientName, patientName, dentistName, date, time,
+                %s For assistance, please call the clinic.
+                """.formatted(confirmationMessage, patientName, introduction,
+                rescheduled ? "NEW APPOINTMENT DETAILS" : "APPOINTMENT DETAILS", patientName, dentistName, date, time,
                 reference.isEmpty() ? "" : "Booking reference: " + reference + "\n",
+                hasPreviousSchedule ? "PREVIOUS APPOINTMENT (REPLACED)\nDate: " + DATE.format(previousDate)
+                        + "\nTime: " + TIME.format(previousTime) + " (IST, India Standard Time)\n" : "",
                 clinicAddress, directionsUrl,
                 appointmentUrl.isEmpty() ? "" : "\nView appointment: " + appointmentUrl + "\n",
-                clinicPhone);
-        return new EmailContent("Appointment confirmed | Gayatri Dental Clinic", plainText, html.toString());
+                clinicPhone, values.get("AUTOMATED_NOTICE"));
+        return new EmailContent(subject, plainText, html.toString());
     }
 
     private static String joinNames(String firstName, String lastName) {

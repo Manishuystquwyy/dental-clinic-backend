@@ -162,9 +162,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         denyPatientCancelIfCompleted(appointment, requestDto);
 
-        boolean changesSlot = changesOwner
-                || !appointment.getAppointmentDate().equals(requestDto.getAppointmentDate())
-                || !appointment.getAppointmentTime().equals(requestDto.getAppointmentTime());
+        LocalDate previousDate = appointment.getAppointmentDate();
+        LocalTime previousTime = appointment.getAppointmentTime();
+        boolean changesDateOrTime = !previousDate.equals(requestDto.getAppointmentDate())
+                || !previousTime.equals(requestDto.getAppointmentTime());
+        boolean changesSlot = changesOwner || changesDateOrTime;
         if (SecurityUtils.getCurrentRole() == Role.PATIENT && changesSlot
                 && (appointment.getStatus() != AppointmentStatus.BOOKED
                 || requestDto.getStatus() != AppointmentStatus.BOOKED)) {
@@ -198,6 +200,13 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         AppointmentMapper.updateEntity(requestDto, appointment, patient, dentist);
         Appointment savedAppointment = appointmentRepository.save(appointment);
+        if (changesDateOrTime && savedAppointment.getStatus() == AppointmentStatus.BOOKED) {
+            try {
+                notificationService.sendAppointmentRescheduled(patient, dentist, savedAppointment, previousDate, previousTime);
+            } catch (Exception ex) {
+                log.warn("Failed to prepare appointment rescheduling notification", ex);
+            }
+        }
         return AppointmentMapper.toDto(savedAppointment);
     }
 
