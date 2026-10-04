@@ -36,4 +36,17 @@ public class BookingTime {
             throw new BadRequestException("Please choose a future appointment date and time.");
         }
     }
+
+    public void requireOnlineChangeAllowed(LocalDate appointmentDate, LocalTime appointmentTime,
+                                          int cutoffHours, String action) {
+        if (cutoffHours < 0) {
+            throw new IllegalArgumentException("Appointment cutoff hours must be nonnegative integers.");
+        }
+        if (appointmentDate == null || appointmentTime == null
+                || now().isAfter(appointmentDate.atTime(appointmentTime).minusHours(cutoffHours))) {
+            throw new BadRequestException(
+                    "Appointments can only be " + action + " at least " + cutoffHours
+                            + " hours before their scheduled start time.");
+        }
+    }
 }

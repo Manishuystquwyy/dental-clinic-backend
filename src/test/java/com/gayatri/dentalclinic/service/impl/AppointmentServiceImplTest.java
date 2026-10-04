@@ -1,5 +1,6 @@
 package com.gayatri.dentalclinic.service.impl;
 
+import com.gayatri.dentalclinic.config.AppointmentPolicy;
 import com.gayatri.dentalclinic.dto.request.AppointmentRequestDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
 import com.gayatri.dentalclinic.entity.Appointment;
@@ -31,6 +32,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -58,6 +61,7 @@ class AppointmentServiceImplTest {
     private AppointmentServiceImpl service;
     private PatientRepository patientRepository;
     private DentistRepository dentistRepository;
+    private AppointmentPolicy appointmentPolicy;
 
     @BeforeEach
     void setUp() {
@@ -65,15 +69,20 @@ class AppointmentServiceImplTest {
         patientRepository = mock(PatientRepository.class);
         dentistRepository = mock(DentistRepository.class);
         userAccountRepository = mock(UserAccountRepository.class);
-        NotificationService notificationService = mock(NotificationService.class);
+        appointmentPolicy = new AppointmentPolicy(12, 12);
+        useClock("2026-09-24T08:30:00Z");
+    }
+
+    private void useClock(String instant) {
         service = new AppointmentServiceImpl(
                 appointmentRepository,
                 patientRepository,
                 dentistRepository,
                 userAccountRepository,
-                notificationService,
+                mock(NotificationService.class),
                 mock(MedicalRecordRepository.class),
-                new BookingTime(Clock.fixed(Instant.parse("2026-09-24T08:30:00Z"), ZoneOffset.UTC))
+                new BookingTime(Clock.fixed(Instant.parse(instant), ZoneOffset.UTC)),
+                appointmentPolicy
         );
     }
 
@@ -207,16 +216,351 @@ class AppointmentServiceImplTest {
     }
 
     @Test
-    void existingPastAppointmentsCanStillBeCompletedOrCancelled() {
+    void patientCanRescheduleTheirBookedAppointmentWithoutChangingItsIdentityOrDetails() {
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        appointment.setAppointmentDate(LocalDate.of(2026, 9, 25));
+        appointment.setRemarks("Follow-up consultation");
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        var request = request(LocalDate.of(2026, 9, 26), LocalTime.of(14, 30), AppointmentStatus.BOOKED);
+        request.setRemarks(appointment.getRemarks());
+
+        var result = service.updateAppointment(25L, request);
+
+        assertEquals(25L, result.getId());
+        assertEquals(3L, result.getPatientId());
+        assertEquals(10L, result.getDentistId());
+        assertEquals(LocalDate.of(2026, 9, 26), result.getAppointmentDate());
+        assertEquals(LocalTime.of(14, 30), result.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, result.getStatus());
+        assertEquals("Follow-up consultation", result.getRemarks());
+        verify(appointmentRepository).save(appointment);
+    }
+
+    @Test
+    void occupiedRescheduleSlotLeavesTheOriginalAppointmentUnchanged() {
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        appointment.setAppointmentDate(LocalDate.of(2026, 9, 25));
+        appointment.setRemarks("Follow-up consultation");
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        var targetDate = LocalDate.of(2026, 9, 26);
+        var targetTime = LocalTime.of(14, 30);
+        when(appointmentRepository.findByDentistIdAndAppointmentDateAndStatusIn(
+                10L, targetDate, List.of(AppointmentStatus.BOOKED, AppointmentStatus.COMPLETED)))
+                .thenReturn(List.of(Appointment.builder().id(26L).appointmentTime(targetTime)
+                        .status(AppointmentStatus.BOOKED).build()));
+
+        assertThrows(BadRequestException.class, () -> service.updateAppointment(25L,
+                request(targetDate, targetTime, AppointmentStatus.BOOKED)));
+
+        assertEquals(25L, appointment.getId());
+        assertEquals(3L, appointment.getPatient().getId());
+        assertEquals(10L, appointment.getDentist().getId());
+        assertEquals(LocalDate.of(2026, 9, 25), appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
+        assertEquals("Follow-up consultation", appointment.getRemarks());
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @Test
+    void patientCannotRescheduleAnotherPatientsAppointment() {
+        authenticate(Role.PATIENT, 4L);
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        assertThrows(AccessDeniedException.class, () -> service.updateAppointment(25L,
+                request(LocalDate.of(2026, 9, 25), LocalTime.of(14, 30), AppointmentStatus.BOOKED)));
+
+        assertEquals(LocalDate.of(2026, 9, 23), appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
+        verify(appointmentRepository, never()).save(any());
+        verifyNoInteractions(patientRepository, dentistRepository);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AppointmentStatus.class, names = {"CANCELLED", "COMPLETED"})
+    void patientCannotReopenAClosedAppointmentByRescheduling(AppointmentStatus status) {
+        authenticate(Role.PATIENT, 3L);
+        var appointment = existingAppointment(status);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        var error = assertThrows(BadRequestException.class, () -> service.updateAppointment(25L,
+                request(LocalDate.of(2026, 9, 25), LocalTime.of(14, 30), AppointmentStatus.BOOKED)));
+
+        assertEquals("Only booked appointments can be rescheduled.", error.getMessage());
+        assertEquals(LocalDate.of(2026, 9, 23), appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(status, appointment.getStatus());
+        verify(appointmentRepository, never()).save(any());
+        verifyNoInteractions(patientRepository, dentistRepository);
+    }
+
+    @Test
+    void patientCannotChangeTheSlotWhileCancellingAnAppointment() {
+        authenticate(Role.PATIENT, 3L);
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        var error = assertThrows(BadRequestException.class, () -> service.updateAppointment(25L,
+                request(LocalDate.of(2026, 9, 25), LocalTime.of(14, 30), AppointmentStatus.CANCELLED)));
+
+        assertEquals("Only booked appointments can be rescheduled.", error.getMessage());
+        assertEquals(LocalDate.of(2026, 9, 23), appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "cancel, 2026-09-24T16:59:59Z, true",
+            "cancel, 2026-09-24T17:00:00Z, true",
+            "cancel, 2026-09-24T17:00:01Z, false",
+            "reschedule, 2026-09-24T16:59:59Z, true",
+            "reschedule, 2026-09-24T17:00:00Z, true",
+            "reschedule, 2026-09-24T17:00:01Z, false",
+            "delete, 2026-09-24T16:59:59Z, true",
+            "delete, 2026-09-24T17:00:00Z, true",
+            "delete, 2026-09-24T17:00:01Z, false"
+    })
+    void onlineChangesEnforceTheOriginalAppointmentsTwelveHourBoundary(
+            String action, String instant, boolean allowed) {
+        useClock(instant);
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        if (allowed) {
+            changeAppointment(action, appointment);
+            if (action.equals("delete")) {
+                verify(appointmentRepository).delete(appointment);
+            } else {
+                verify(appointmentRepository).save(appointment);
+                assertEquals(action.equals("cancel") ? AppointmentStatus.CANCELLED : AppointmentStatus.BOOKED,
+                        appointment.getStatus());
+                assertEquals(action.equals("reschedule") ? LocalDate.of(2026, 9, 26) : LocalDate.of(2026, 9, 25),
+                        appointment.getAppointmentDate());
+                assertEquals(action.equals("reschedule") ? LocalTime.of(11, 0) : LocalTime.of(10, 30),
+                        appointment.getAppointmentTime());
+            }
+        } else {
+            assertThrows(BadRequestException.class, () -> changeAppointment(action, appointment));
+            assertOriginalOnlineAppointment(appointment);
+            verify(appointmentRepository, never()).save(any());
+            verify(appointmentRepository, never()).delete(any());
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Role.class)
+    void noRoleCanBypassTheOnlineChangeCutoff(Role role) {
+        useClock("2026-09-24T17:00:01Z");
+        if (role == Role.DOCTOR) authenticateDoctorForDentist(10L);
+        else authenticate(role, role == Role.PATIENT ? 3L : null);
+        for (var action : List.of("cancel", "reschedule", "delete")) {
+            var appointment = onlineAppointment();
+            when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+            assertThrows(BadRequestException.class, () -> changeAppointment(action, appointment));
+
+            assertOriginalOnlineAppointment(appointment);
+        }
+        verify(appointmentRepository, never()).save(any());
+        verify(appointmentRepository, never()).delete(any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "2026-09-25, 2026-09-25, 18:00",
+            "2026-09-25, 2026-09-30, 18:00",
+            "2026-09-23, 2026-09-30, 18:00"
+    })
+    void movingToALaterTimeOrDateCannotBypassTheOriginalAppointmentsCutoff(
+            LocalDate originalDate, LocalDate targetDate, LocalTime targetTime) {
+        useClock("2026-09-24T17:00:01Z");
+        authenticate(Role.PATIENT, 3L);
+        var appointment = onlineAppointment();
+        appointment.setAppointmentDate(originalDate);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        assertThrows(BadRequestException.class, () -> service.updateAppointment(25L,
+                request(targetDate, targetTime, AppointmentStatus.BOOKED)));
+
+        assertEquals(originalDate, appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
+        assertEquals("Follow-up consultation", appointment.getRemarks());
+        verify(appointmentRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(AppointmentStatus.class)
+    void deletingAnyAppointmentStatusAfterTheCutoffIsRejected(AppointmentStatus status) {
+        useClock("2026-09-24T17:00:01Z");
+        authenticate(Role.ADMIN, null);
+        var appointment = onlineAppointment();
+        appointment.setStatus(status);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+
+        assertThrows(BadRequestException.class, () -> service.deleteAppointment(25L));
+
+        assertEquals(LocalDate.of(2026, 9, 25), appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(status, appointment.getStatus());
+        verify(appointmentRepository, never()).delete(any());
+    }
+
+    @Test
+    void omittedUpdateStatusCannotFreeABookedSlotWithinTheCutoff() {
+        useClock("2026-09-24T17:00:01Z");
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        var request = request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), null);
+        request.setRemarks(appointment.getRemarks());
+
+        var result = service.updateAppointment(25L, request);
+
+        assertEquals(AppointmentStatus.BOOKED, result.getStatus());
+        assertOriginalOnlineAppointment(appointment);
+    }
+
+    @Test
+    void unchangedCancelledAppointmentCanBeRetriedAfterTheCutoff() {
+        useClock("2026-09-24T17:00:01Z");
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        appointment.setStatus(AppointmentStatus.CANCELLED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        var result = service.updateAppointment(25L,
+                request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), AppointmentStatus.CANCELLED));
+
+        assertEquals(AppointmentStatus.CANCELLED, result.getStatus());
+        assertEquals(LocalDate.of(2026, 9, 25), result.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), result.getAppointmentTime());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "24, 6, cancel, false, 24, cancelled",
+            "24, 6, reschedule, true, 6, rescheduled",
+            "24, 6, delete, false, 24, cancelled",
+            "6, 24, cancel, true, 6, cancelled",
+            "6, 24, reschedule, false, 24, rescheduled",
+            "6, 24, delete, true, 6, cancelled"
+    })
+    void cancellationAndReschedulingUseTheirIndependentConfiguredCutoffs(
+            int cancellationHours, int rescheduleHours, String action, boolean allowed,
+            int expectedHours, String expectedAction) {
+        appointmentPolicy = new AppointmentPolicy(cancellationHours, rescheduleHours);
+        useClock("2026-09-24T09:00:00Z");
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        if (allowed) {
+            changeAppointment(action, appointment);
+            if (action.equals("delete")) verify(appointmentRepository).delete(appointment);
+            else verify(appointmentRepository).save(appointment);
+        } else {
+            var error = assertThrows(BadRequestException.class, () -> changeAppointment(action, appointment));
+            assertEquals("Appointments can only be " + expectedAction + " at least " + expectedHours
+                    + " hours before their scheduled start time.", error.getMessage());
+            assertOriginalOnlineAppointment(appointment);
+            verify(appointmentRepository, never()).save(any());
+            verify(appointmentRepository, never()).delete(any());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"24, 6, cancelled", "6, 24, rescheduled", "6, 6, NULL"}, nullValues = "NULL")
+    void compoundCancellationAndSlotChangeMustSatisfyBothPolicies(
+            int cancellationHours, int rescheduleHours, String rejectedAction) {
+        appointmentPolicy = new AppointmentPolicy(cancellationHours, rescheduleHours);
+        useClock("2026-09-24T09:00:00Z");
+        authenticate(Role.ADMIN, null);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+        var request = request(LocalDate.of(2026, 9, 26), LocalTime.of(11, 0), AppointmentStatus.CANCELLED);
+
+        if (rejectedAction == null) {
+            var result = service.updateAppointment(25L, request);
+            assertEquals(AppointmentStatus.CANCELLED, result.getStatus());
+            assertEquals(LocalDate.of(2026, 9, 26), result.getAppointmentDate());
+            verify(appointmentRepository).save(appointment);
+        } else {
+            var error = assertThrows(BadRequestException.class, () -> service.updateAppointment(25L, request));
+            assertEquals("Appointments can only be " + rejectedAction
+                    + " at least 24 hours before their scheduled start time.", error.getMessage());
+            assertOriginalOnlineAppointment(appointment);
+            verify(appointmentRepository, never()).save(any());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "cancel, 2026-09-24T05:00:00Z, true",
+            "cancel, 2026-09-24T05:00:00.001Z, false",
+            "reschedule, 2026-09-24T23:00:00Z, true",
+            "reschedule, 2026-09-24T23:00:00.001Z, false",
+            "delete, 2026-09-24T05:00:00Z, true",
+            "delete, 2026-09-24T05:00:00.001Z, false"
+    })
+    void configuredCutoffsRemainInclusiveAndRejectTheFirstMillisecondAfter(
+            String action, String instant, boolean allowed) {
+        appointmentPolicy = new AppointmentPolicy(24, 6);
+        useClock(instant);
+        authenticate(Role.PATIENT, 3L);
+        stubPatientAndDentist();
+        var appointment = onlineAppointment();
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
+
+        if (allowed) {
+            changeAppointment(action, appointment);
+            if (action.equals("delete")) verify(appointmentRepository).delete(appointment);
+            else verify(appointmentRepository).save(appointment);
+        } else {
+            assertThrows(BadRequestException.class, () -> changeAppointment(action, appointment));
+            assertOriginalOnlineAppointment(appointment);
+            verify(appointmentRepository, never()).save(any());
+            verify(appointmentRepository, never()).delete(any());
+        }
+    }
+
+    @Test
+    void existingPastAppointmentsCanStillBeCompletedButCannotBeCancelledOnline() {
         authenticate(Role.ADMIN, null);
         stubPatientAndDentist();
         when(appointmentRepository.save(any(Appointment.class))).thenAnswer(call -> call.getArgument(0));
-        for (var status : List.of(AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED)) {
-            var appointment = existingAppointment(AppointmentStatus.BOOKED);
-            when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
-            assertEquals(status, service.updateAppointment(25L,
-                    request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), status)).getStatus());
-        }
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(appointment));
+        assertEquals(AppointmentStatus.COMPLETED, service.updateAppointment(25L,
+                request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), AppointmentStatus.COMPLETED)).getStatus());
+
+        var pastBooking = existingAppointment(AppointmentStatus.BOOKED);
+        when(appointmentRepository.findWithLockById(25L)).thenReturn(Optional.of(pastBooking));
+        assertThrows(BadRequestException.class, () -> service.updateAppointment(25L,
+                request(pastBooking.getAppointmentDate(), pastBooking.getAppointmentTime(), AppointmentStatus.CANCELLED)));
+        assertEquals(AppointmentStatus.BOOKED, pastBooking.getStatus());
+        verify(appointmentRepository, never()).save(pastBooking);
     }
 
     @Test
@@ -315,6 +659,35 @@ class AppointmentServiceImplTest {
 
     private AppointmentRequestDto completionRequest(Appointment appointment) {
         return request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), AppointmentStatus.COMPLETED);
+    }
+
+    private Appointment onlineAppointment() {
+        var appointment = existingAppointment(AppointmentStatus.BOOKED);
+        appointment.setAppointmentDate(LocalDate.of(2026, 9, 25));
+        appointment.setRemarks("Follow-up consultation");
+        return appointment;
+    }
+
+    private void changeAppointment(String action, Appointment appointment) {
+        if (action.equals("delete")) {
+            service.deleteAppointment(appointment.getId());
+            return;
+        }
+        var request = action.equals("reschedule")
+                ? request(LocalDate.of(2026, 9, 26), LocalTime.of(11, 0), AppointmentStatus.BOOKED)
+                : request(appointment.getAppointmentDate(), appointment.getAppointmentTime(), AppointmentStatus.CANCELLED);
+        request.setRemarks(appointment.getRemarks());
+        service.updateAppointment(appointment.getId(), request);
+    }
+
+    private void assertOriginalOnlineAppointment(Appointment appointment) {
+        assertEquals(25L, appointment.getId());
+        assertEquals(3L, appointment.getPatient().getId());
+        assertEquals(10L, appointment.getDentist().getId());
+        assertEquals(LocalDate.of(2026, 9, 25), appointment.getAppointmentDate());
+        assertEquals(LocalTime.of(10, 30), appointment.getAppointmentTime());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
+        assertEquals("Follow-up consultation", appointment.getRemarks());
     }
 
     private void authenticateDoctorForDentist(Long dentistId) {

@@ -1,5 +1,6 @@
 package com.gayatri.dentalclinic.service.impl;
 
+import com.gayatri.dentalclinic.config.AppointmentPolicy;
 import com.gayatri.dentalclinic.dto.request.AppointmentRequestDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentAvailabilityResponseDto;
@@ -54,6 +55,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final NotificationService notificationService;
     private final MedicalRecordRepository medicalRecordRepository;
     private final BookingTime bookingTime;
+    private final AppointmentPolicy appointmentPolicy;
 
     @Override
     @Transactional
@@ -150,6 +152,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         enforcePatientAccess(requestDto.getPatientId());
         enforceDoctorAccess(appointment.getDentist().getId());
         enforceDoctorAccess(requestDto.getDentistId());
+        if (requestDto.getStatus() == null) {
+            requestDto.setStatus(appointment.getStatus());
+        }
         boolean changesOwner = !appointment.getPatient().getId().equals(requestDto.getPatientId())
                 || !appointment.getDentist().getId().equals(requestDto.getDentistId());
         if (changesOwner && (SecurityUtils.getCurrentRole() != Role.ADMIN || medicalRecordRepository.existsByAppointmentId(id))) {
@@ -160,6 +165,21 @@ public class AppointmentServiceImpl implements AppointmentService {
         boolean changesSlot = changesOwner
                 || !appointment.getAppointmentDate().equals(requestDto.getAppointmentDate())
                 || !appointment.getAppointmentTime().equals(requestDto.getAppointmentTime());
+        if (SecurityUtils.getCurrentRole() == Role.PATIENT && changesSlot
+                && (appointment.getStatus() != AppointmentStatus.BOOKED
+                || requestDto.getStatus() != AppointmentStatus.BOOKED)) {
+            throw new BadRequestException("Only booked appointments can be rescheduled.");
+        }
+        boolean cancelsAppointment = requestDto.getStatus() == AppointmentStatus.CANCELLED
+                && appointment.getStatus() != AppointmentStatus.CANCELLED;
+        if (changesSlot) {
+            bookingTime.requireOnlineChangeAllowed(appointment.getAppointmentDate(), appointment.getAppointmentTime(),
+                    appointmentPolicy.rescheduleCutoffHours(), "rescheduled");
+        }
+        if (cancelsAppointment) {
+            bookingTime.requireOnlineChangeAllowed(appointment.getAppointmentDate(), appointment.getAppointmentTime(),
+                    appointmentPolicy.cancellationCutoffHours(), "cancelled");
+        }
         validateCompletion(appointment, requestDto, changesSlot);
         boolean reopensBooking = requestDto.getStatus() == AppointmentStatus.BOOKED
                 && appointment.getStatus() != AppointmentStatus.BOOKED;
@@ -195,6 +215,8 @@ public class AppointmentServiceImpl implements AppointmentService {
                 && appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new AccessDeniedException("Completed appointments cannot be cancelled.");
         }
+        bookingTime.requireOnlineChangeAllowed(appointment.getAppointmentDate(), appointment.getAppointmentTime(),
+                appointmentPolicy.cancellationCutoffHours(), "cancelled");
         appointmentRepository.delete(appointment);
     }
 

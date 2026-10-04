@@ -1,8 +1,10 @@
 package com.gayatri.dentalclinic.controller;
 
+import com.gayatri.dentalclinic.config.AppointmentPolicy;
 import com.gayatri.dentalclinic.dto.request.AppointmentRequestDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentResponseDto;
 import com.gayatri.dentalclinic.dto.response.AppointmentAvailabilityResponseDto;
+import com.gayatri.dentalclinic.dto.response.AppointmentPolicyResponseDto;
 import com.gayatri.dentalclinic.service.AppointmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,6 +29,14 @@ import java.time.LocalDate;
 public class AppointmentController {
 
     private final AppointmentService appointmentService;
+    private final AppointmentPolicy appointmentPolicy;
+
+    @GetMapping("/policy")
+    @Operation(summary = "Get appointment change policy", description = "Returns the configured cancellation and rescheduling cutoff hours.")
+    public AppointmentPolicyResponseDto getPolicy() {
+        return new AppointmentPolicyResponseDto(appointmentPolicy.cancellationCutoffHours(),
+                appointmentPolicy.rescheduleCutoffHours());
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
