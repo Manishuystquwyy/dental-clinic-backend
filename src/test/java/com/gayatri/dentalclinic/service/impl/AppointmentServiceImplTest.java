@@ -19,6 +19,11 @@ import com.gayatri.dentalclinic.security.CustomUserDetails;
 import com.gayatri.dentalclinic.service.AppointmentService;
 import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.NotificationService;
+import com.gayatri.dentalclinic.service.RefundService;
+import com.gayatri.dentalclinic.service.AppointmentFinancialSummaryService;
+import com.gayatri.dentalclinic.repository.PaymentRepository;
+import com.gayatri.dentalclinic.repository.RefundRepository;
+import com.gayatri.dentalclinic.entity.Payment;
 import java.sql.Connection;
 import java.time.Clock;
 import java.time.Instant;
@@ -66,6 +71,9 @@ class AppointmentServiceImplTest {
     private DentistRepository dentistRepository;
     private AppointmentPolicy appointmentPolicy;
     private NotificationService notificationService;
+    private RefundService refundService;
+    private PaymentRepository paymentRepository;
+    private RefundRepository refundRepository;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +82,9 @@ class AppointmentServiceImplTest {
         dentistRepository = mock(DentistRepository.class);
         userAccountRepository = mock(UserAccountRepository.class);
         notificationService = mock(NotificationService.class);
+        refundService = mock(RefundService.class);
+        paymentRepository = mock(PaymentRepository.class);
+        refundRepository = mock(RefundRepository.class);
         appointmentPolicy = new AppointmentPolicy(12, 12);
         useClock("2026-09-24T08:30:00Z");
     }
@@ -87,7 +98,11 @@ class AppointmentServiceImplTest {
                 notificationService,
                 mock(MedicalRecordRepository.class),
                 new BookingTime(Clock.fixed(Instant.parse(instant), ZoneOffset.UTC)),
-                appointmentPolicy
+                appointmentPolicy,
+                refundService,
+                new AppointmentFinancialSummaryService(paymentRepository, refundRepository,
+                        new BookingTime(Clock.fixed(Instant.parse(instant), ZoneOffset.UTC)), appointmentPolicy),
+                paymentRepository
         );
     }
 

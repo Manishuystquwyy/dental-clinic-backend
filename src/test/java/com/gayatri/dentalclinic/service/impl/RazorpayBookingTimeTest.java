@@ -40,6 +40,7 @@ class RazorpayBookingTimeTest {
         service = new RazorpayPaymentServiceImpl(dentists, patients, appointments, bills, payments,
                 sessions, mock(NotificationService.class),
                 new BookingTime(Clock.fixed(Instant.parse("2026-09-24T08:30:00Z"), ZoneOffset.UTC)),
+                mock(com.gayatri.dentalclinic.service.RefundService.class),
                 mock(org.springframework.web.client.RestClient.class), "", "", "INR", "test-secret");
     }
 

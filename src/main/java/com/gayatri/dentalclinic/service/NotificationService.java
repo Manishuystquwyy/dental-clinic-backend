@@ -6,6 +6,7 @@ import com.gayatri.dentalclinic.entity.Patient;
 import com.gayatri.dentalclinic.entity.PublicRequest;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.math.BigDecimal;
 
 public interface NotificationService {
 
@@ -14,4 +15,7 @@ public interface NotificationService {
                                     LocalDate previousDate, LocalTime previousTime);
     void sendPasswordResetEmail(String toEmail, String resetToken);
     void sendPublicRequestNotification(PublicRequest request);
+    /** Worker-only synchronous delivery; true means SMTP accepted the confirmation. */
+    boolean sendRefundConfirmation(String recipient, Long appointmentId, BigDecimal amount,
+                                   String currency, String refundId);
 }

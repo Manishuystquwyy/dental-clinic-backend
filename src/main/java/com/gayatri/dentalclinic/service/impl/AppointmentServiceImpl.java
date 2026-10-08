@@ -23,6 +23,9 @@ import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.AppointmentService;
 import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.NotificationService;
+import com.gayatri.dentalclinic.service.RefundService;
+import com.gayatri.dentalclinic.service.AppointmentFinancialSummaryService;
+import com.gayatri.dentalclinic.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -56,6 +59,9 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final MedicalRecordRepository medicalRecordRepository;
     private final BookingTime bookingTime;
     private final AppointmentPolicy appointmentPolicy;
+    private final RefundService refundService;
+    private final AppointmentFinancialSummaryService financialSummaryService;
+    private final PaymentRepository paymentRepository;
 
     @Override
     @Transactional
@@ -86,7 +92,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         } catch (Exception ex) {
             log.warn("Failed to send appointment confirmation notification", ex);
         }
-        return AppointmentMapper.toDto(savedAppointment);
+        return financialSummaryService.toDto(savedAppointment);
     }
 
     @Override
@@ -101,10 +107,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         } else {
             appointments = appointmentRepository.findAll();
         }
-        return appointments
-                .stream()
-                .map(AppointmentMapper::toDto)
-                .toList();
+        return financialSummaryService.toDtos(appointments);
     }
 
     @Override
@@ -126,11 +129,8 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new NotFoundException("Doctor profile was not found for the current account");
         }
 
-        return appointmentRepository
-                .findByDentistIdOrderByAppointmentDateAscAppointmentTimeAsc(dentist.getId())
-                .stream()
-                .map(AppointmentMapper::toDto)
-                .toList();
+        return financialSummaryService.toDtos(appointmentRepository
+                .findByDentistIdOrderByAppointmentDateAscAppointmentTimeAsc(dentist.getId()));
     }
 
     @Override
@@ -140,7 +140,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
         enforceDoctorAccess(appointment.getDentist().getId());
-        return AppointmentMapper.toDto(appointment);
+        return financialSummaryService.toDto(appointment);
     }
 
     @Override
@@ -167,6 +167,17 @@ public class AppointmentServiceImpl implements AppointmentService {
         boolean changesDateOrTime = !previousDate.equals(requestDto.getAppointmentDate())
                 || !previousTime.equals(requestDto.getAppointmentTime());
         boolean changesSlot = changesOwner || changesDateOrTime;
+        boolean hasPayments = !paymentRepository.findByBillAppointmentId(id).isEmpty();
+        if (hasPayments && changesOwner) {
+            throw new BadRequestException("Patient and doctor cannot be changed after payment. Create a new appointment instead.");
+        }
+        if (hasPayments && appointment.getStatus() == AppointmentStatus.CANCELLED
+                && (changesSlot || requestDto.getStatus() != AppointmentStatus.CANCELLED)) {
+            throw new BadRequestException("A cancelled paid appointment cannot be reopened or rescheduled. Please make a new booking.");
+        }
+        if (hasPayments && requestDto.getStatus() == AppointmentStatus.CANCELLED && changesSlot) {
+            throw new BadRequestException("Cancel the appointment without changing its patient, doctor, date or time.");
+        }
         if (SecurityUtils.getCurrentRole() == Role.PATIENT && changesSlot
                 && (appointment.getStatus() != AppointmentStatus.BOOKED
                 || requestDto.getStatus() != AppointmentStatus.BOOKED)) {
@@ -200,6 +211,10 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         AppointmentMapper.updateEntity(requestDto, appointment, patient, dentist);
         Appointment savedAppointment = appointmentRepository.save(appointment);
+        if (cancelsAppointment) {
+            // The durable intent commits with cancellation; no gateway call holds the slot.
+            refundService.queueCancellation(savedAppointment);
+        }
         if (changesDateOrTime && savedAppointment.getStatus() == AppointmentStatus.BOOKED) {
             try {
                 notificationService.sendAppointmentRescheduled(patient, dentist, savedAppointment, previousDate, previousTime);
@@ -207,7 +222,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 log.warn("Failed to prepare appointment rescheduling notification", ex);
             }
         }
-        return AppointmentMapper.toDto(savedAppointment);
+        return financialSummaryService.toDto(savedAppointment);
     }
 
     @Override
@@ -217,6 +232,9 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + id));
         enforcePatientAccess(appointment.getPatient().getId());
         enforceDoctorAccess(appointment.getDentist().getId());
+        if (!paymentRepository.findByBillAppointmentId(id).isEmpty()) {
+            throw new BadRequestException("Appointments with payments cannot be deleted. Cancel the appointment to preserve payment and refund history.");
+        }
         if (medicalRecordRepository.existsByAppointmentId(id)) {
             throw new BadRequestException("Appointments with medical records cannot be deleted. Cancel the appointment instead.");
         }

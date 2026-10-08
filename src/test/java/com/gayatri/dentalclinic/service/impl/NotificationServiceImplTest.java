@@ -13,6 +13,7 @@ import jakarta.mail.internet.MimeMessage;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.math.BigDecimal;
 import java.util.Properties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -172,5 +173,31 @@ class NotificationServiceImplTest {
 
     private NotificationServiceImpl serviceWithFrom(String from) {
         return new NotificationServiceImpl(sender, Runnable::run, from, "https://clinic.example.com/", "", template);
+    }
+
+    @Test
+    void refundConfirmationSendsBrandedReceiptAndReportsAcceptedDelivery() throws Exception {
+        assertTrue(service.sendRefundConfirmation("patient@example.com", 42L,
+                new BigDecimal("500.00"), "INR", "rfnd_confirmed"));
+        var captor = ArgumentCaptor.forClass(MimeMessage.class);
+        verify(sender).send(captor.capture());
+        MimeMessage mail = captor.getValue();
+        mail.saveChanges();
+        assertEquals("Refund processed · GDC-42", mail.getSubject());
+        Multipart related = (Multipart) mail.getContent();
+        Multipart alternatives = (Multipart) related.getBodyPart(0).getContent();
+        String plain = (String) alternatives.getBodyPart(0).getContent();
+        assertTrue(plain.contains("INR 500.00"));
+        assertTrue(plain.contains("rfnd_confirmed"));
+        assertTrue(plain.contains("original payment method"));
+        assertTrue(((String) alternatives.getBodyPart(1).getContent()).contains("cid:gayatri-clinic-logo"));
+    }
+
+    @Test
+    void missingEmailConfigurationDoesNotClaimRefundNotificationWasDelivered() {
+        assertFalse(serviceWithFrom("").sendRefundConfirmation("patient@example.com", 42L,
+                BigDecimal.TEN, "INR", "rfnd_test"));
+        assertFalse(service.sendRefundConfirmation(" ", 42L, BigDecimal.TEN, "INR", "rfnd_test"));
+        verifyNoInteractions(sender);
     }
 }

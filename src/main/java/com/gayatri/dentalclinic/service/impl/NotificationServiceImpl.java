@@ -13,6 +13,8 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.math.BigDecimal;
+import org.springframework.web.util.HtmlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -82,6 +84,47 @@ public class NotificationServiceImpl implements NotificationService {
             });
         } else {
             dispatch.run();
+        }
+    }
+
+    @Override
+    public boolean sendRefundConfirmation(String recipient, Long appointmentId, BigDecimal amount,
+                                          String currency, String refundId) {
+        if (recipient == null || recipient.isBlank() || fromEmail == null || fromEmail.isBlank()) {
+            return false;
+        }
+        String amountText = currency + " " + amount.toPlainString();
+        String plain = """
+                Your appointment GDC-%s is cancelled and your refund has been processed.
+
+                Refund amount: %s
+                Refund reference: %s
+
+                The refund is returned to your original payment method. Your bank may take
+                5–7 working days to show the credit. Please keep the refund reference above.
+
+                Thank you,
+                Gayatri Dental Clinic
+                """.formatted(appointmentId, amountText, refundId);
+        String html = """
+                <!doctype html><html><body style="margin:0;background:#f6f8f7;font-family:Arial,sans-serif;color:#223a35">
+                <main style="max-width:560px;margin:32px auto;background:white;padding:32px;border-radius:16px">
+                <img src="cid:gayatri-clinic-logo" width="64" alt="Gayatri Dental Clinic">
+                <h1 style="font-size:24px">Your refund has been processed</h1>
+                <p>Your appointment <strong>GDC-%s</strong> is cancelled.</p>
+                <div style="padding:20px;background:#edf7f4;border-radius:12px">
+                <p>Refund amount<br><strong style="font-size:22px">%s</strong></p>
+                <p>Refund reference<br><strong>%s</strong></p></div>
+                <p>The refund is returned to your original payment method. Your bank may take
+                5–7 working days to show the credit. Please keep this refund reference.</p>
+                <p>Thank you,<br>Gayatri Dental Clinic</p></main></body></html>
+                """.formatted(appointmentId, HtmlUtils.htmlEscape(amountText), HtmlUtils.htmlEscape(refundId));
+        try {
+            // This method already runs on the durable refund worker after the REFUNDED commit.
+            sendAppointmentEmail(recipient, new EmailContent("Refund processed · GDC-" + appointmentId, plain, html));
+            return true;
+        } catch (MessagingException | UnsupportedEncodingException ex) {
+            throw new IllegalStateException("Unable to send refund confirmation", ex);
         }
     }
 

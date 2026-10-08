@@ -81,7 +81,7 @@ public class AppointmentController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update appointment", description = "Updates an appointment by id.")
+    @Operation(summary = "Update appointment", description = "Updates an appointment by id. Cancelling releases the slot and atomically queues eligible Razorpay refunds; payment and refund tracking are included in the response.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Appointment updated",
                     content = @Content(schema = @Schema(implementation = AppointmentResponseDto.class))),

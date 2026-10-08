@@ -76,6 +76,8 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
 
+        requireManualPayment(payment);
+
         Bill bill = billRepository.findById(requestDto.getBillId())
                 .orElseThrow(() -> new NotFoundException("Bill not found with id: " + requestDto.getBillId()));
 
@@ -93,7 +95,15 @@ public class PaymentServiceImpl implements PaymentService {
         denyIfPatient();
         Payment payment = paymentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + id));
+        requireManualPayment(payment);
         paymentRepository.delete(payment);
+    }
+
+    private void requireManualPayment(Payment payment) {
+        if ((payment.getGatewayPaymentId() != null && !payment.getGatewayPaymentId().isBlank())
+                || (payment.getGatewayOrderId() != null && !payment.getGatewayOrderId().isBlank())) {
+            throw new BadRequestException("Razorpay payments are managed by the payment provider and cannot be edited or deleted");
+        }
     }
 
     private void validateAmount(PaymentRequestDto requestDto, Bill bill) {
