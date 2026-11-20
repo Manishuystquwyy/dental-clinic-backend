@@ -43,7 +43,8 @@ class RazorpayTimezoneTest {
 
     private RazorpayPaymentServiceImpl service(String now) {
         var service = new RazorpayPaymentServiceImpl(dentists, patients, appointments, bills, payments, sessions,
-                mock(NotificationService.class), new BookingTime(Clock.fixed(Instant.parse(now), ZoneOffset.UTC)), builder.build(), "test", "test-secret", "INR", "test-secret");
+                mock(NotificationService.class), new BookingTime(Clock.fixed(Instant.parse(now), ZoneOffset.UTC)),
+                mock(com.gayatri.dentalclinic.service.RefundService.class), builder.build(), "test", "test-secret", "INR", "test-secret");
         var user = new CustomUserDetails(2L, "patient@example.com", "hash", Role.PATIENT, 3L);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
         return service;

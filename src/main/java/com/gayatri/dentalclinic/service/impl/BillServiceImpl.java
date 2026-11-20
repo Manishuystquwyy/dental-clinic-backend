@@ -6,9 +6,11 @@ import com.gayatri.dentalclinic.entity.Appointment;
 import com.gayatri.dentalclinic.entity.Bill;
 import com.gayatri.dentalclinic.enums.Role;
 import com.gayatri.dentalclinic.exception.NotFoundException;
+import com.gayatri.dentalclinic.exception.BadRequestException;
 import com.gayatri.dentalclinic.mapper.BillMapper;
 import com.gayatri.dentalclinic.repository.AppointmentRepository;
 import com.gayatri.dentalclinic.repository.BillRepository;
+import com.gayatri.dentalclinic.repository.PaymentRepository;
 import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.BillService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class BillServiceImpl implements BillService {
 
     private final BillRepository billRepository;
     private final AppointmentRepository appointmentRepository;
+    private final PaymentRepository paymentRepository;
 
     @Override
     @Transactional
@@ -68,6 +71,8 @@ public class BillServiceImpl implements BillService {
         Bill bill = billRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Bill not found with id: " + id));
 
+        requireUnpaidBill(id);
+
         Appointment appointment = appointmentRepository.findById(requestDto.getAppointmentId())
                 .orElseThrow(() -> new NotFoundException("Appointment not found with id: " + requestDto.getAppointmentId()));
 
@@ -82,7 +87,14 @@ public class BillServiceImpl implements BillService {
         denyIfPatient();
         Bill bill = billRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Bill not found with id: " + id));
+        requireUnpaidBill(id);
         billRepository.delete(bill);
+    }
+
+    private void requireUnpaidBill(Long billId) {
+        if (paymentRepository.existsByBillId(billId)) {
+            throw new BadRequestException("Bills with payments cannot be changed or deleted. Preserve the original payment and refund history.");
+        }
     }
 
     private void enforcePatientAccess(Long patientId) {

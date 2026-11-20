@@ -19,7 +19,7 @@ class RazorpayConnectivityTest {
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
     private RazorpayPaymentServiceImpl service() {
-        var service = new RazorpayPaymentServiceImpl(null, null, null, null, null, null, null, null, builder.build(), "test", "test", "INR", "");
+        var service = new RazorpayPaymentServiceImpl(null, null, null, null, null, null, null, null, null, builder.build(), "test", "test", "INR", "");
         return service;
     }
 

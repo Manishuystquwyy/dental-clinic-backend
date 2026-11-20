@@ -35,6 +35,10 @@ public class Payment {
     @Column(precision = 38, scale = 2)
     private BigDecimal amount;
 
+    @Builder.Default
+    @Column(length = 3)
+    private String currency = "INR";
+
     private LocalDate paymentDate;
 
     @Enumerated(EnumType.STRING)

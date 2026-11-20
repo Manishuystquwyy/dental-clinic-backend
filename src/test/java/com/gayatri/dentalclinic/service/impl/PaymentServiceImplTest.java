@@ -13,6 +13,8 @@ import com.gayatri.dentalclinic.repository.PaymentRepository;
 import com.gayatri.dentalclinic.security.CustomUserDetails;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import com.gayatri.dentalclinic.exception.BadRequestException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -23,6 +25,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 class PaymentServiceImplTest {
@@ -70,5 +73,19 @@ class PaymentServiceImplTest {
     private PaymentRequestDto successfulPayment() {
         return new PaymentRequestDto(5L, PaymentMode.CASH, BigDecimal.TEN,
                 LocalDate.of(2026, 9, 24), PaymentStatus.SUCCESS);
+    }
+
+    @Test
+    void staffCannotEditGatewayPaymentOrFalselyMarkItRefundedOrDeleteItsLedger() {
+        var payment = Payment.builder().id(9L).status(PaymentStatus.SUCCESS)
+                .gatewayPaymentId("pay_provider").build();
+        when(payments.findById(9L)).thenReturn(Optional.of(payment));
+        var request = successfulPayment();
+        request.setStatus(PaymentStatus.REFUNDED);
+        assertThrows(BadRequestException.class, () -> service.updatePayment(9L, request));
+        assertThrows(BadRequestException.class, () -> service.deletePayment(9L));
+        verify(payments, never()).save(any());
+        verify(payments, never()).delete(any());
+        verifyNoInteractions(bills);
     }
 }

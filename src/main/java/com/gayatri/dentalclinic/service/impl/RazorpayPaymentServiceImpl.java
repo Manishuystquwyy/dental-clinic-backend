@@ -28,6 +28,7 @@ import com.gayatri.dentalclinic.security.SecurityUtils;
 import com.gayatri.dentalclinic.service.NotificationService;
 import com.gayatri.dentalclinic.service.BookingTime;
 import com.gayatri.dentalclinic.service.RazorpayPaymentService;
+import com.gayatri.dentalclinic.service.RefundService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -44,6 +45,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -69,6 +71,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
     private final RazorpayCheckoutSessionRepository checkoutSessionRepository;
     private final NotificationService notificationService;
     private final BookingTime bookingTime;
+    private final RefundService refundService;
     private final RestClient razorpayRestClient;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
@@ -85,6 +88,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             RazorpayCheckoutSessionRepository checkoutSessionRepository,
             NotificationService notificationService,
             BookingTime bookingTime,
+            RefundService refundService,
             RestClient razorpayRestClient,
             @Value("${app.razorpay.key-id:}") String razorpayKeyId,
             @Value("${app.razorpay.key-secret:}") String razorpayKeySecret,
@@ -98,6 +102,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
         this.checkoutSessionRepository = checkoutSessionRepository;
         this.notificationService = notificationService;
         this.bookingTime = bookingTime;
+        this.refundService = refundService;
         this.razorpayRestClient = razorpayRestClient;
         this.razorpayKeyId = razorpayKeyId;
         this.razorpayKeySecret = razorpayKeySecret;
@@ -186,6 +191,11 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
         Map<String, Object> payload = jsonParser.parseMap(rawPayload);
         String event = getText(payload, "event");
 
+        if (event.startsWith("refund.")) {
+            refundService.handleWebhook(event, getNestedMap(payload, "payload", "refund", "entity"));
+            return;
+        }
+
         if (!"payment.captured".equalsIgnoreCase(event)) {
             return;
         }
@@ -251,7 +261,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             mac.init(new SecretKeySpec(razorpayKeySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             String payload = orderId + "|" + paymentId;
             String expected = bytesToHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
-            if (!expected.equals(signature)) {
+            if (!signatureMatches(expected, signature)) {
                 throw new BadRequestException("Razorpay signature verification failed.");
             }
         } catch (BadRequestException ex) {
@@ -266,7 +276,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             throw new BadRequestException("Razorpay webhook secret is not configured on the server.");
         }
         String expected = hmacSha256(rawPayload, razorpayWebhookSecret);
-        if (!expected.equals(signature)) {
+        if (!signatureMatches(expected, signature)) {
             throw new BadRequestException("Razorpay webhook signature verification failed.");
         }
     }
@@ -349,6 +359,14 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             builder.append(String.format("%02x", b));
         }
         return builder.toString();
+    }
+
+    private boolean signatureMatches(String expected, String supplied) {
+        if (supplied == null || !supplied.matches("[0-9a-fA-F]{64}")) {
+            return false;
+        }
+        return MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII),
+                supplied.toLowerCase(java.util.Locale.ROOT).getBytes(StandardCharsets.US_ASCII));
     }
 
     private String hmacSha256(String payload, String secret) {
@@ -462,7 +480,11 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
             if (session.getRazorpayPaymentId() != null && !session.getRazorpayPaymentId().equals(paymentId)) {
                 throw new BadRequestException("This Razorpay order is already linked to a different payment.");
             }
-            return AppointmentMapper.toDto(session.getConfirmedAppointment());
+            Appointment existingAppointment = session.getConfirmedAppointment();
+            if (existingAppointment.getStatus() == AppointmentStatus.CANCELLED) {
+                refundService.queueCancellation(existingAppointment);
+            }
+            return AppointmentMapper.toDto(existingAppointment);
         }
 
         if (paymentRepository.existsByGatewayPaymentId(paymentId)) {
@@ -503,6 +525,7 @@ public class RazorpayPaymentServiceImpl implements RazorpayPaymentService {
                 .bill(savedBill)
                 .paymentMode(mapPaymentMode(method))
                 .amount(session.getAmount())
+                .currency(currency)
                 .paymentDate(paymentDate)
                 .status(PaymentStatus.SUCCESS)
                 .gatewayOrderId(session.getRazorpayOrderId())

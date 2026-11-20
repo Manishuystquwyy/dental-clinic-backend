@@ -1,6 +1,7 @@
 package com.gayatri.dentalclinic.dto.response;
 
 import com.gayatri.dentalclinic.enums.AppointmentStatus;
+import com.gayatri.dentalclinic.enums.PaymentStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,6 +11,8 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.math.BigDecimal;
+import java.util.List;
 
 @Getter
 @Setter
@@ -41,4 +44,19 @@ public class AppointmentResponseDto {
 
     @Schema(description = "Notes or remarks", example = "Initial consultation")
     private String remarks;
+
+    @Schema(description = "Status of payments linked to this appointment")
+    private PaymentStatus paymentStatus;
+
+    @Schema(description = "Total successfully paid amount, including subsequently refunded payments")
+    private BigDecimal paidAmount;
+
+    @Schema(description = "Amount eligible for an automatic Razorpay refund when cancelling now")
+    private BigDecimal refundableAmount;
+
+    @Schema(description = "Whether cancelling now qualifies for an automatic Razorpay refund")
+    private boolean refundEligible;
+
+    @Builder.Default
+    private List<RefundResponseDto> refunds = List.of();
 }
